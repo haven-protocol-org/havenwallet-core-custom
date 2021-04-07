@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018, The Monero Project
+// Copyright (c) 2014-2019, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -99,7 +99,7 @@ struct binary_archive<false> : public binary_archive_base<std::istream, false>
 {
 
   explicit binary_archive(stream_type &s) : base_type(s) {
-    stream_type::streampos pos = stream_.tellg();
+    stream_type::pos_type pos = stream_.tellg();
     stream_.seekg(0, std::ios_base::end);
     eof_pos_ = stream_.tellg();
     stream_.seekg(pos);
@@ -146,7 +146,8 @@ struct binary_archive<false> : public binary_archive_base<std::istream, false>
   void serialize_uvarint(T &v)
   {
     typedef std::istreambuf_iterator<char> it;
-    tools::read_varint(it(stream_), it(), v); // XXX handle failure
+    if (tools::read_varint(it(stream_), it(), v) < 0)
+      stream_.setstate(std::ios_base::failbit);
   }
 
   void begin_array(size_t &s)
@@ -200,6 +201,10 @@ struct binary_archive<true> : public binary_archive_base<std::ostream, true>
     stream_.write((char *)buf, len);
   }
 
+  void serialize_readable_string(const char *buf, size_t len, const char *delimiter="\"") {
+    stream_.write(buf, len);
+  }
+  
   template <class T>
   void serialize_varint(T &v)
   {

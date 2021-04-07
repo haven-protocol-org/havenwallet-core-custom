@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018, The Monero Project
+// Copyright (c) 2014-2019, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -113,7 +113,7 @@ struct json_archive;
 template <>
 struct json_archive<true> : public json_archive_base<std::ostream, true>
 {
-  json_archive(stream_type &s, bool indent = false) : base_type(s, indent) { }
+  json_archive(stream_type &s, bool indent = false) : base_type(s, indent), inner_array_size_(0) { }
 
   template<typename T>
   static auto promote_to_printable_integer_type(T v) -> decltype(+v)
@@ -138,6 +138,14 @@ struct json_archive<true> : public json_archive_base<std::ostream, true>
     end_string(delimiter);
   }
 
+  void serialize_readable_string(const char *buf, size_t len, const char *delimiter="\"") {
+    begin_string(delimiter);
+    for (size_t i = 0; i < len; i++) {
+      stream_ << buf[i];
+    }
+    end_string(delimiter);
+  }
+  
   template <class T>
   void serialize_varint(T &v)
   {

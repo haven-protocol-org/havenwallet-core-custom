@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018, The Monero Project
+// Copyright (c) 2017-2019, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -31,15 +31,12 @@
 
 
 #include "device_default.hpp"
-#include "common/int-util.h"
+#include "int-util.h"
 #include "cryptonote_basic/account.h"
 #include "cryptonote_basic/subaddress_index.h"
 #include "cryptonote_core/cryptonote_tx_utils.h"
 #include "ringct/rctOps.h"
-
-#include "log.hpp"
-#define ENCRYPTED_PAYMENT_ID_TAIL 0x8d
-#define CHACHA8_KEY_TAIL 0x8c
+#include "cryptonote_config.h"
 
 namespace hw {
 
@@ -71,21 +68,21 @@ namespace hw {
         }
         
         bool device_default::init(void) {
-            dfns();
+            return true;
         }
         bool device_default::release() {
-            dfns();
+            return true;
         }
 
         bool device_default::connect(void) {
-            dfns();
+            return true;
         }
         bool device_default::disconnect() {
-            dfns();
+            return true;
         }
 
         bool  device_default::set_mode(device_mode mode) {
-            return true;
+            return device::set_mode(mode);
         }
 
         /* ======================================================================= */
@@ -108,7 +105,7 @@ namespace hw {
             epee::mlocked<tools::scrubbed_arr<char, sizeof(view_key) + sizeof(spend_key) + 1>> data;
             memcpy(data.data(), &view_key, sizeof(view_key));
             memcpy(data.data() + sizeof(view_key), &spend_key, sizeof(spend_key));
-            data[sizeof(data) - 1] = CHACHA8_KEY_TAIL;
+            data[sizeof(data) - 1] = config::HASH_KEY_WALLET;
             crypto::generate_chacha_key(data.data(), sizeof(data), key, kdf_rounds);
             return true;
         }
@@ -197,14 +194,13 @@ namespace hw {
         }
 
         crypto::secret_key  device_default::get_subaddress_secret_key(const crypto::secret_key &a, const cryptonote::subaddress_index &index) {
-            const char prefix[] = "SubAddr";
-            char data[sizeof(prefix) + sizeof(crypto::secret_key) + 2 * sizeof(uint32_t)];
-            memcpy(data, prefix, sizeof(prefix));
-            memcpy(data + sizeof(prefix), &a, sizeof(crypto::secret_key));
+            char data[sizeof(config::HASH_KEY_SUBADDRESS) + sizeof(crypto::secret_key) + 2 * sizeof(uint32_t)];
+            memcpy(data, config::HASH_KEY_SUBADDRESS, sizeof(config::HASH_KEY_SUBADDRESS));
+            memcpy(data + sizeof(config::HASH_KEY_SUBADDRESS), &a, sizeof(crypto::secret_key));
             uint32_t idx = SWAP32LE(index.major);
-            memcpy(data + sizeof(prefix) + sizeof(crypto::secret_key), &idx, sizeof(uint32_t));
+            memcpy(data + sizeof(config::HASH_KEY_SUBADDRESS) + sizeof(crypto::secret_key), &idx, sizeof(uint32_t));
             idx = SWAP32LE(index.minor);
-            memcpy(data + sizeof(prefix) + sizeof(crypto::secret_key) + sizeof(uint32_t), &idx, sizeof(uint32_t));
+            memcpy(data + sizeof(config::HASH_KEY_SUBADDRESS) + sizeof(crypto::secret_key) + sizeof(uint32_t), &idx, sizeof(uint32_t));
             crypto::secret_key m;
             crypto::hash_to_scalar(data, sizeof(data), m);
             return m;
@@ -273,11 +269,20 @@ namespace hw {
         /* ======================================================================= */
         /*                               TRANSACTION                               */
         /* ======================================================================= */
+        void device_default::generate_tx_proof(const crypto::hash &prefix_hash, 
+                                               const crypto::public_key &R, const crypto::public_key &A, const boost::optional<crypto::public_key> &B, const crypto::public_key &D, const crypto::secret_key &r, 
+                                               crypto::signature &sig) {
+            crypto::generate_tx_proof(prefix_hash, R, A, B, D, r, sig);
+        }
 
         bool device_default::open_tx(crypto::secret_key &tx_key) {
             cryptonote::keypair txkey = cryptonote::keypair::generate(*this);
             tx_key = txkey.sec;
             return true;
+        }
+
+        void device_default::get_transaction_prefix_hash(const cryptonote::transaction_prefix& tx, crypto::hash& h) {
+            cryptonote::get_transaction_prefix_hash(tx, h);
         }
 
         bool device_default::generate_output_ephemeral_keys(const size_t tx_version,
@@ -340,13 +345,17 @@ namespace hw {
                 return false;
 
             memcpy(data, &derivation, 32);
-            data[32] = ENCRYPTED_PAYMENT_ID_TAIL;
+            data[32] = config::HASH_KEY_ENCRYPTED_PAYMENT_ID;
             cn_fast_hash(data, 33, hash);
 
             for (size_t b = 0; b < 8; ++b)
                 payment_id.data[b] ^= hash.data[b];
 
             return true;
+        }
+
+        rct::key device_default::genCommitmentMask(const rct::key &amount_key) {
+            return rct::genCommitmentMask(amount_key);
         }
 
         bool  device_default::ecdhEncode(rct::ecdhTuple & unmasked, const rct::key & sharedSec, bool short_amount) {
