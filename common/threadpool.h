@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018, The Monero Project
+// Copyright (c) 2017-2019, The Monero Project
 //
 // All rights reserved.
 //
@@ -69,12 +69,17 @@ public:
   // task to finish.
   void submit(waiter *waiter, std::function<void()> f, bool leaf = false);
 
+  // destroy and recreate threads
+  void recycle();
+
   unsigned int get_max_concurrency() const;
 
   ~threadpool();
 
   private:
     threadpool(unsigned int max_threads = 0);
+    void destroy();
+    void create(unsigned int max_threads);
     typedef struct entry {
       waiter *wo;
       std::function<void()> f;
