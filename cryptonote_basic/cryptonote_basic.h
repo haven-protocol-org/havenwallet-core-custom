@@ -234,23 +234,50 @@ namespace cryptonote
     std::vector<uint8_t> offshore_data;
     uint64_t amount_burnt;
     uint64_t amount_minted;
+    std::vector<uint64_t> output_unlock_times;
 
     BEGIN_SERIALIZE()
       VARINT_FIELD(version)
       if(version == 0 || CURRENT_TRANSACTION_VERSION < version) return false;
-      VARINT_FIELD(unlock_time)
+      if (version < POU_TRANSACTION_VERSION)
+      {
+        VARINT_FIELD(unlock_time)
+      }
       FIELD(vin)
       FIELD(vout)
       FIELD(extra)
       if(version < OFFSHORE_TRANSACTION_VERSION) return true;
       VARINT_FIELD(pricing_record_height)
-      FIELD(offshore_data)
+      if (version < 5)
+        FIELD(offshore_data)
+
+      if (version >= POU_TRANSACTION_VERSION)
+      {
+        FIELD(output_unlock_times)
+      }
+      if (version >= POU_TRANSACTION_VERSION && vout.size() != output_unlock_times.size()) return false;
       VARINT_FIELD(amount_burnt)
       VARINT_FIELD(amount_minted)
     END_SERIALIZE()
 
   public:
     transaction_prefix(){ set_null(); }
+
+    uint64_t get_unlock_time(size_t out_index) const
+    {
+      if (version >= POU_TRANSACTION_VERSION)
+      {
+        if (out_index >= output_unlock_times.size())
+        {
+          LOG_ERROR("Tried to get unlock time of a v6+ transaction with missing output unlock time");
+          return unlock_time;
+        }
+        return output_unlock_times[out_index];
+      }
+      return unlock_time;
+    }
+
+
     void set_null()
     {
       version = 1;
@@ -262,6 +289,7 @@ namespace cryptonote
       offshore_data.clear();
       amount_burnt = 0;
       amount_minted = 0;
+      output_unlock_times.clear();
     }
   };
 
@@ -541,7 +569,7 @@ namespace cryptonote
       FIELD(prev_id)
       FIELD(nonce)
     if (major_version >= HF_VERSION_OFFSHORE_PRICING)
-      FIELD(pricing_record)
+      FIELD_CUSTOM_VAL(pricing_record, major_version)
     END_SERIALIZE()
   };
 

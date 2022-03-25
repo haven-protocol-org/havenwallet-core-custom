@@ -37,13 +37,14 @@ using namespace epee;
 #include "common/apply_permutation.h"
 #include "cryptonote_tx_utils.h"
 #include "cryptonote_config.h"
-// #include "blockchain.h"
-// #include "cryptonote_basic/miner.h"
+//#include "blockchain.h"
+//#include "cryptonote_basic/miner.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "ringct/rctSigs.h"
 #include "multisig/multisig.h"
+#include "offshore/asset_types.h"
 
 using namespace crypto;
 
@@ -122,15 +123,7 @@ namespace cryptonote
     keypair gov_key = get_deterministic_keypair_from_height(height);
 
     cryptonote::address_parse_info governance_wallet_address;
-
-    if (nettype == TESTNET) {
-      cryptonote::get_account_address_from_str(governance_wallet_address, TESTNET, governance_wallet_address_str);
-    } else if (nettype == STAGENET) {
-      cryptonote::get_account_address_from_str(governance_wallet_address, STAGENET, governance_wallet_address_str);
-    } else {
-      cryptonote::get_account_address_from_str(governance_wallet_address, MAINNET, governance_wallet_address_str);
-    }
-
+    cryptonote::get_account_address_from_str(governance_wallet_address, nettype, governance_wallet_address_str);
     crypto::public_key correct_key;
 
     if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, output_index, correct_key))
@@ -141,12 +134,41 @@ namespace cryptonote
 
     return correct_key == output_key;
   }
+
+  std::string get_governance_address(uint32_t version, network_type nettype) {
+    if (version >= HF_VERSION_XASSET_FULL) {
+      if (nettype == TESTNET) {
+        return ::config::testnet::GOVERNANCE_WALLET_ADDRESS_MULTI;
+      } else if (nettype == STAGENET) {
+        return ::config::stagenet::GOVERNANCE_WALLET_ADDRESS_MULTI;
+      } else {
+        return ::config::GOVERNANCE_WALLET_ADDRESS_MULTI_NEW;
+      }
+    } else if (version >= 4) {
+      if (nettype == TESTNET) {
+        return ::config::testnet::GOVERNANCE_WALLET_ADDRESS_MULTI;
+      } else if (nettype == STAGENET) {
+        return ::config::stagenet::GOVERNANCE_WALLET_ADDRESS_MULTI;
+      } else {
+        return ::config::GOVERNANCE_WALLET_ADDRESS_MULTI;
+      }
+    } else {
+      if (nettype == TESTNET) {
+        return ::config::testnet::GOVERNANCE_WALLET_ADDRESS;
+      } else if (nettype == STAGENET) {
+        return ::config::stagenet::GOVERNANCE_WALLET_ADDRESS;
+      } else {
+        return ::config::GOVERNANCE_WALLET_ADDRESS;
+      }
+    }
+  }
   
   //---------------------------------------------------------------
-//   bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, std::map<std::string, uint64_t> fee_map,  std::map<std::string, uint64_t> offshore_fee_map, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce, size_t max_outs, uint8_t hard_fork_version, cryptonote::network_type nettype) {
+//   bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, std::map<std::string, uint64_t> fee_map,  std::map<std::string, uint64_t> offshore_fee_map, std::map<std::string, uint64_t> xasset_fee_map, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce, size_t max_outs, uint8_t hard_fork_version, cryptonote::network_type nettype) {
 //     tx.vin.clear();
 //     tx.vout.clear();
 //     tx.extra.clear();
+//     tx.output_unlock_times.clear();
 
 //     keypair txkey = keypair::generate(hw::get_device("default"));
 //     add_tx_pub_key_to_extra(tx, txkey.pub);
@@ -169,11 +191,11 @@ namespace cryptonote
 //     }
 
 // #if defined(DEBUG_CREATE_BLOCK_TEMPLATE)
-//     // HERE BE DRAGONS!!!
 //     // NEAC: need to iterate over the currency maps to output all fees
-//     //LOG_PRINT_L1("Creating block template: reward " << block_reward <<
-//     //  ", fee " << fee);
-//     // LAND AHOY!!!
+//     LOG_PRINT_L1("Creating block template: block reward " << block_reward);
+//     for (const auto &fee: fee_map) {
+//       LOG_PRINT_L1("\t" << fee.first << " fee " << fee);
+//     }
 // #endif
 
 //     uint64_t governance_reward = 0;
@@ -186,14 +208,11 @@ namespace cryptonote
 //     }
 
 //     block_reward += fee_map["XHV"];
-
 //     uint64_t summary_amounts = 0;
-
 //     crypto::key_derivation derivation = AUTO_VAL_INIT(derivation);;
 //     crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
 //     bool r = crypto::generate_key_derivation(miner_address.m_view_public_key, txkey.sec, derivation);
 //     CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << miner_address.m_view_public_key << ", " << txkey.sec << ")");
-
 //     r = crypto::derive_public_key(derivation, 0, miner_address.m_spend_public_key, out_eph_public_key);
 //     CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << "0" << ", "<< miner_address.m_spend_public_key << ")");
 
@@ -205,42 +224,14 @@ namespace cryptonote
 //     out.target = tk;
 //     tx.vout.push_back(out);
 
+//     // add governance wallet output for xhv
 //     cryptonote::address_parse_info governance_wallet_address;
-
 //     if (hard_fork_version >= 3) {
 //       if (already_generated_coins != 0)
 //       {
 //         add_tx_pub_key_to_extra(tx, gov_key.pub);
-
-//         if (hard_fork_version >= HF_VERSION_XASSET_FULL) {
-//           if (nettype == TESTNET) {
-//             cryptonote::get_account_address_from_str(governance_wallet_address, TESTNET, ::config::testnet::GOVERNANCE_WALLET_ADDRESS_MULTI);
-//           } else if (nettype == STAGENET) {
-// 	    cryptonote::get_account_address_from_str(governance_wallet_address, STAGENET, ::config::stagenet::GOVERNANCE_WALLET_ADDRESS_MULTI);
-//           } else {
-//             cryptonote::get_account_address_from_str(governance_wallet_address, MAINNET, ::config::GOVERNANCE_WALLET_ADDRESS_MULTI_NEW);
-//           }
-//         } else if (hard_fork_version >= 4) {
-//           // shouts to sebseb7
-//           if (nettype == TESTNET) {
-//             cryptonote::get_account_address_from_str(governance_wallet_address, TESTNET, ::config::testnet::GOVERNANCE_WALLET_ADDRESS_MULTI);
-//           } else if (nettype == STAGENET) {
-// 	    cryptonote::get_account_address_from_str(governance_wallet_address, STAGENET, ::config::stagenet::GOVERNANCE_WALLET_ADDRESS_MULTI);
-//           } else {
-//             cryptonote::get_account_address_from_str(governance_wallet_address, MAINNET, ::config::GOVERNANCE_WALLET_ADDRESS_MULTI);
-//           }
-//         } else {
-//           if (nettype == TESTNET) {
-//             cryptonote::get_account_address_from_str(governance_wallet_address, TESTNET, ::config::testnet::GOVERNANCE_WALLET_ADDRESS);
-//           } else if (nettype == STAGENET) {
-// 	    cryptonote::get_account_address_from_str(governance_wallet_address, STAGENET, ::config::stagenet::GOVERNANCE_WALLET_ADDRESS);
-//           } else {
-//             cryptonote::get_account_address_from_str(governance_wallet_address, MAINNET, ::config::GOVERNANCE_WALLET_ADDRESS);
-//           }
-//         }
-
+//         cryptonote::get_account_address_from_str(governance_wallet_address, nettype, get_governance_address(hard_fork_version, nettype));
 //         crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
-
 //         if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, 1 /* second output in miner tx */, out_eph_public_key))
 //         {
 //           MERROR("Failed to generate deterministic output key for governance wallet output creation");
@@ -249,104 +240,115 @@ namespace cryptonote
 
 //         txout_to_key tk;
 //         tk.key = out_eph_public_key;
-
 //         tx_out out;
 //         summary_amounts += out.amount = governance_reward;
-
 //         if (hard_fork_version >= HF_VERSION_OFFSHORE_FULL) {
 //           out.amount += offshore_fee_map["XHV"];
 //         }
 
 //         out.target = tk;
 //         tx.vout.push_back(out);
-
 //         CHECK_AND_ASSERT_MES(summary_amounts == (block_reward + governance_reward), false, "Failed to construct miner tx, summary_amounts = " << summary_amounts << " not equal total block_reward = " << (block_reward + governance_reward));
-
 //       }
 //     }
-//     if (hard_fork_version >= HF_VERSION_OFFSHORE_FULL) {
 
+//     if (hard_fork_version >= HF_VERSION_OFFSHORE_FULL) {
 //       // Add all of the outputs for all of the currencies in the contained TXs
 //       uint64_t idx = 2;
 //       for (auto &fee_map_entry: fee_map) {
+//         // Skip XHV - we have already handled that above
+//         if (fee_map_entry.first == "XHV")
+//           continue;
+    
+//         if (fee_map_entry.second != 0) {
+//           uint64_t block_reward_xasset = fee_map_entry.second;
+//           uint64_t governance_reward_xasset = 0;
+//           governance_reward_xasset = get_governance_reward(height, fee_map_entry.second);
+//           block_reward_xasset -= governance_reward_xasset;
 
-// 	// Skip XHV - we have already handled that above
-// 	if (fee_map_entry.first == "XHV")
-// 	  continue;
-	
-// 	if (fee_map_entry.second != 0) {
+//           // Add the conversion fee to the governance payment (if provided)
+//           if (offshore_fee_map[fee_map_entry.first] != 0) {
+//             governance_reward_xasset += offshore_fee_map[fee_map_entry.first];
+//           }
+          
+//           // we got 0.5% from xasset conversions. Here we wanna burn 80%(0.4% of the initial whole) of it and 
+//           // spilit the rest between governance wallet and the miner
+//           if (hard_fork_version >= HF_VERSION_XASSET_FEES_V2) {
+//             if (xasset_fee_map[fee_map_entry.first] != 0) {
+//               uint64_t fee = xasset_fee_map[fee_map_entry.first];
+//               // burn 80%
+//               fee -= (fee * 4) / 5;
+//               // split the rest
+//               block_reward_xasset += fee / 2;
+//               governance_reward_xasset += fee / 2;
+//             }
+//           }
 
-// 	  uint64_t block_reward_xasset = fee_map_entry.second;
-// 	  uint64_t governance_reward_xasset = 0;
-// 	  governance_reward_xasset = get_governance_reward(height, fee_map_entry.second);
-// 	  block_reward_xasset -= governance_reward_xasset;
+//           // Miner component of the xAsset TX fee
+//           r = crypto::derive_public_key(derivation, idx, miner_address.m_spend_public_key, out_eph_public_key);
+//           CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << idx << ", "<< miner_address.m_spend_public_key << ")");
+//           idx++;
 
-// 	  // Add the conversion fee to the governance payment (if provided)
-// 	  if (offshore_fee_map[fee_map_entry.first] != 0) {
-// 	    governance_reward_xasset += offshore_fee_map[fee_map_entry.first];
-// 	  }
+//           if (fee_map_entry.first == "XUSD") {
+//             // Offshore TX
+//             txout_offshore tk_off;
+//             tk_off.key = out_eph_public_key;
+            
+//             tx_out out_off;
+//             out_off.amount = block_reward_xasset;
+//             out_off.target = tk_off;
+//             tx.vout.push_back(out_off);
+//           } else {
+//             // xAsset TX
+//             txout_xasset tk_off;
+//             tk_off.key = out_eph_public_key;
+//             tk_off.asset_type = fee_map_entry.first;
+            
+//             tx_out out_off;
+//             out_off.amount = block_reward_xasset;
+//             out_off.target = tk_off;
+//             tx.vout.push_back(out_off);
+//           }
 
-// 	  // Miner component of the xAsset TX fee
-// 	  r = crypto::derive_public_key(derivation, idx, miner_address.m_spend_public_key, out_eph_public_key);
-// 	  CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << idx << ", "<< miner_address.m_spend_public_key << ")");
-// 	  idx++;
+//           crypto::public_key out_eph_public_key_xasset = AUTO_VAL_INIT(out_eph_public_key_xasset);
+//           if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, idx /* n'th output in miner tx */, out_eph_public_key_xasset))
+//           {
+//             MERROR("Failed to generate deterministic output key for governance wallet output creation (2)");
+//             return false;
+//           }
+//           idx++;
 
-// 	  if (fee_map_entry.first == "XUSD") {
-// 	    // Offshore TX
-// 	    txout_offshore tk_off;
-// 	    tk_off.key = out_eph_public_key;
-      
-// 	    tx_out out_off;
-// 	    out_off.amount = block_reward_xasset;
-// 	    out_off.target = tk_off;
-// 	    tx.vout.push_back(out_off);
-// 	  } else {
-// 	    // xAsset TX
-// 	    txout_xasset tk_off;
-// 	    tk_off.key = out_eph_public_key;
-// 	    tk_off.asset_type = fee_map_entry.first;
-      
-// 	    tx_out out_off;
-// 	    out_off.amount = block_reward_xasset;
-// 	    out_off.target = tk_off;
-// 	    tx.vout.push_back(out_off);
-// 	  }
-
-// 	  crypto::public_key out_eph_public_key_xasset = AUTO_VAL_INIT(out_eph_public_key_xasset);
-
-// 	  if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, idx /* n'th output in miner tx */, out_eph_public_key_xasset))
-// 	  {
-// 	    MERROR("Failed to generate deterministic output key for governance wallet output creation (2)");
-// 	    return false;
-// 	  }
-// 	  idx++;
-
-// 	  if (fee_map_entry.first == "XUSD") {
-// 	    // Offshore TX
-// 	    txout_offshore tk_gov;
-// 	    tk_gov.key = out_eph_public_key_xasset;
-	    
-// 	    tx_out out_gov;
-// 	    out_gov.amount = governance_reward_xasset;
-// 	    out_gov.target = tk_gov;
-// 	    tx.vout.push_back(out_gov);
-// 	  } else {
-// 	    // xAsset TX
-// 	    txout_xasset tk_gov;
-// 	    tk_gov.key = out_eph_public_key_xasset;
-// 	    tk_gov.asset_type = fee_map_entry.first;
-	    
-// 	    tx_out out_gov;
-// 	    out_gov.amount = governance_reward_xasset;
-// 	    out_gov.target = tk_gov;
-// 	    tx.vout.push_back(out_gov);
-// 	  }
-// 	}
+//           if (fee_map_entry.first == "XUSD") {
+//             // Offshore TX
+//             txout_offshore tk_gov;
+//             tk_gov.key = out_eph_public_key_xasset;
+            
+//             tx_out out_gov;
+//             out_gov.amount = governance_reward_xasset;
+//             out_gov.target = tk_gov;
+//             tx.vout.push_back(out_gov);
+//           } else {
+//             // xAsset TX
+//             txout_xasset tk_gov;
+//             tk_gov.key = out_eph_public_key_xasset;
+//             tk_gov.asset_type = fee_map_entry.first;
+            
+//             tx_out out_gov;
+//             out_gov.amount = governance_reward_xasset;
+//             out_gov.target = tk_gov;
+//             tx.vout.push_back(out_gov);
+//           }
+//         }
 //       }
 //     }
-    
-//     if (hard_fork_version >= HF_VERSION_OFFSHORE_FULL) {
-//       tx.version = CURRENT_TRANSACTION_VERSION;
+//     if (hard_fork_version >= HF_PER_OUTPUT_UNLOCK_VERSION) {
+//       tx.version = 6;
+//     } else if (hard_fork_version >= HF_VERSION_HAVEN2) {
+//       tx.version = 5;
+//     } else if (hard_fork_version >= HF_VERSION_XASSET_FEES_V2) {
+//       tx.version = 4;
+//     } else if (hard_fork_version >= HF_VERSION_OFFSHORE_FULL) {
+//       tx.version = 3;
 //     } else {
 //       tx.version = 2;
 //     }
@@ -354,9 +356,13 @@ namespace cryptonote
 //     //lock
 //     tx.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
 //     tx.vin.push_back(in);
-
 //     tx.invalidate_hashes();
 
+//     // per-output-unlock times
+//     if (hard_fork_version >= HF_PER_OUTPUT_UNLOCK_VERSION)
+//       for (size_t i=0; i<tx.vout.size(); i++)
+//         tx.output_unlock_times.push_back(tx.unlock_time);
+    
 //     //LOG_PRINT("MINER_TX generated ok, block_reward=" << print_money(block_reward) << "("  << print_money(block_reward - fee) << "+" << print_money(fee)
 //     //  << "), current_block_size=" << current_block_size << ", already_generated_coins=" << already_generated_coins << ", tx_id=" << get_transaction_hash(tx), LOG_LEVEL_2);
 //     return true;
@@ -366,11 +372,12 @@ namespace cryptonote
   {
     account_public_address addr = {null_pkey, null_pkey};
     size_t count = 0;
+    bool found_change = false;
     for (const auto &i : destinations)
     {
-      if (i.amount == 0)
+      if (i.amount == 0 && i.amount_usd == 0 && i.amount_xasset == 0)
         continue;
-      if (change_addr && i.addr == *change_addr)
+      if (change_addr && i.addr == *change_addr && !found_change)
         continue;
       if (i.addr == addr)
         continue;
@@ -389,120 +396,30 @@ namespace cryptonote
     // Calculate the amount being sent
     uint64_t amount = 0;
     for (auto dt: dsts) {
-      if (0 == dt.amount) {
-	MERROR("No XHV amount specified for destination");
-	return false;
-      }
+      // if (0 == dt.amount) {
+      //   MERROR("No XHV amount specified for destination");
+      //   return false;
+      // }
       // Filter out the change, which is never converted
       if (dt.amount_usd != 0) {
-	amount += dt.amount;
+        amount += dt.amount;
       }
     }
 
-    if (0/*fees_version >= 3*/) {
+    if (fees_version >= 4) {
 
-      // Get the delta
-      // abs() implementation for uint64_t's
-      uint64_t delta = (pr.unused1 > pr.xUSD) ? pr.unused1 - pr.xUSD : pr.xUSD - pr.unused1;
-      
-      // Work out the priority 
-      uint32_t priority =
-	(unlock_time >= 7200) ? 1 :
-	(unlock_time >= 3600) ? 2 :
-	(unlock_time >= 1440) ? 3 :
-	4;
-     
-      // Estimate the fee components
-      boost::multiprecision::uint128_t conversion_fee = amount / 500;
-      conversion_fee *= priority;
-      boost::multiprecision::uint128_t conversion_extra = delta;
-      conversion_extra *= amount;
-      uint64_t speed_fee = 0;
-      uint64_t speculation_fee = 0;
-      switch (priority) {
-      case 4:
-	conversion_extra *= 110;
-	conversion_extra /= 100;
-	conversion_extra /= pr.unused1;
-	conversion_fee += conversion_extra;
-	break;
-      case 3:
-	conversion_extra /= pr.unused1;
-	conversion_fee += conversion_extra;
-	break;
-      case 2:
-	conversion_extra *= 75;
-	conversion_extra /= 100;
-	conversion_extra /= pr.unused1;
-	conversion_fee += conversion_extra;
-	break;
-      case 1:
-      default:
-	conversion_extra *= 25;
-	conversion_extra /= 100;
-	conversion_extra /= pr.unused1;
-	conversion_fee += conversion_extra;
-	break;
-      }
-
-      // Calculate the speed fee and speculation fee
-      if (sources.size() == 0) {
-	// Best-case estimates for now
-	speed_fee =
-	  (priority == 4) ? amount / 50 :
-	  (priority == 3) ? amount / 125 :
-	  0;
-      } else {
-
-	// Take a copy of the sources, so we can sort by age
-	auto sources_copy = sources;
-	std::sort(sources_copy.begin(), sources_copy.end(),
-		  [](const tx_source_entry &a, const tx_source_entry &b) { return a.height < b.height; });
-      
-	// Determine the accurate speed fee and speculation_fee
-	if (priority >= 3) {
-	  uint64_t running_total = 0;
-	  uint64_t target_total = amount;// - ((dsts.back().amount > 0) ? dsts.back().amount : dsts.back().amount_usd);
-	  for (auto src: sources_copy) {
-	    uint64_t age = current_height - src.height;
-	    uint64_t src_amount = src.amount;
-	    if (running_total + src_amount <= target_total) {
-	      if (age < (30*24*30)) {
-		speed_fee += (priority == 4) ? src_amount / 20 : src_amount / 50;
-	      } else {
-		speed_fee += (priority == 4) ? src_amount / 50 : src_amount / 125;
-	      }
-	    } else {
-	      // Recalculate the src_amount to finish off the TX
-	      src_amount = target_total - running_total;
-	      if (age < (30*24*30)) {
-		speed_fee += (priority == 4) ? src_amount / 20 : src_amount / 50;
-	      } else {
-		speed_fee += (priority == 4) ? src_amount / 50 : src_amount / 125;
-	      }
-	    }
-	    // Advance the running total
-	    running_total += src_amount;
-	  }
-	}
-      }
-    
-      // Return the fee
-      MINFO("Priority = " << priority << ", spot price = " << print_money((uint64_t)pr.xUSD) << ", MA = " << print_money(pr.unused1));
-      MINFO("Conversion fee = " << print_money((uint64_t)conversion_fee) << ", speed fee = " << print_money(speed_fee));
-      fee_estimate = (uint64_t)conversion_fee + speed_fee + speculation_fee;
+      // Flat 0.5% fee
+      fee_estimate = amount / 200;
       
     } else if (fees_version >= 2) {
-
       // The tests have to be written largest unlock_time first, as it is possible to delay the construction of the TX using GDB etc
       // which would otherwise cause the umlock_time to fall through the gaps and give a minimum fee for a short unlock_time.
       // This way, the code is safe, and the fee is always correct.
       fee_estimate =
-	(unlock_time >= 5040) ? (amount / 500) :
-	(unlock_time >= 1440) ? (amount / 20) :
-	(unlock_time >= 720) ? (amount / 10) :
-	amount / 5;
-
+      (unlock_time >= 5040) ? (amount / 500) :
+      (unlock_time >= 1440) ? (amount / 20) :
+      (unlock_time >= 720) ? (amount / 10) :
+      amount / 5;
     } else {
       // Get the delta
       // abs() implementation for uint64_t's
@@ -520,165 +437,30 @@ namespace cryptonote
     // Calculate the amount being sent
     uint64_t amount_usd = 0;
     for (auto dt: dsts) {
-      if (0 == dt.amount_usd) {
-	MERROR("No USD amount specified for destination");
-	return false;
-      }
+      // if (0 == dt.amount_usd) {
+      //   MERROR("No USD amount specified for destination");
+      //   return false;
+      // }
       // Filter out the change, which is never converted
       if (dt.amount != 0) {
-	amount_usd += dt.amount_usd;
+        amount_usd += dt.amount_usd;
       }
     }
 
-    if (0/*fees_version >= 3*/) {
+    if (fees_version >= 4) {
 
-      // Get the delta
-      // abs() implementation for uint64_t's
-      uint64_t delta = (pr.unused1 > pr.xUSD) ? pr.unused1 - pr.xUSD : pr.xUSD - pr.unused1;
-      
-      // Work out the priority 
-      uint32_t priority =
-	(unlock_time >= 7200) ? 1 :
-	(unlock_time >= 3600) ? 2 :
-	(unlock_time >= 1440) ? 3 :
-	4;
-     
-      // Estimate the fee components
-      boost::multiprecision::uint128_t conversion_fee = amount_usd / 500;
-      conversion_fee *= priority;
-      boost::multiprecision::uint128_t conversion_extra = delta;
-      conversion_extra *= amount_usd;
-      uint64_t speed_fee = 0;
-      uint64_t speculation_fee = 0;
-      switch (priority) {
-      case 4:
-	conversion_extra *= 110;
-	conversion_extra /= (100 * 1000000000000);
-	conversion_fee += conversion_extra;
-	break;
-      case 3:
-	conversion_extra /= 1000000000000;
-	conversion_fee += conversion_extra;
-	break;
-      case 2:
-	conversion_extra *= 75;
-	conversion_extra /= (100 * 1000000000000);
-	conversion_fee += conversion_extra;
-	break;
-      case 1:
-      default:
-	conversion_extra *= 25;
-	conversion_extra /= (100 * 1000000000000);
-	conversion_fee += conversion_extra;
-	break;
-      }
-
-      // Calculate the speed fee and speculation fee
-      if (sources.size() == 0) {
-	// Best-case estimates for now
-	speed_fee =
-	  (priority == 4) ? amount_usd / 50 :
-	  (priority == 3) ? amount_usd / 125 :
-	  0;
-      } else {
-
-	// Take a copy of the sources, so we can sort by age
-	auto sources_copy = sources;
-	std::sort(sources_copy.begin(), sources_copy.end(),
-		  [](const tx_source_entry &a, const tx_source_entry &b) { return a.height < b.height; });
-      
-	// Create a vector of block heights to obtain pricing records for
-	std::vector<uint64_t> heights;
-      
-	// Determine the accurate speed fee and speculation_fee
-	if (priority >= 3) {
-	  uint64_t running_total = 0;
-	  uint64_t target_total = amount_usd;// - ((dsts.back().amount > 0) ? dsts.back().amount : dsts.back().amount_usd);
-	  for (auto src: sources_copy) {
-	    heights.push_back(src.height);
-	    uint64_t age = current_height - src.height;
-	    uint64_t src_amount = src.amount;
-	    if (running_total + src_amount <= target_total) {
-	      if (age < (30*24*30)) {
-		speed_fee += (priority == 4) ? src_amount / 20 : src_amount / 50;
-	      } else {
-		speed_fee += (priority == 4) ? src_amount / 50 : src_amount / 125;
-	      }
-	    } else {
-	      // Recalculate the src_amount to finish off the TX
-	      src_amount = target_total - running_total;
-	      if (age < (30*24*30)) {
-		speed_fee += (priority == 4) ? src_amount / 20 : src_amount / 50;
-	      } else {
-		speed_fee += (priority == 4) ? src_amount / 50 : src_amount / 125;
-	      }
-	    }
-	    // Advance the running total
-	    running_total += src_amount;
-	  }
-	}
-	
-	// Only bother if we have some heights to use
-	if (heights.size()) {
-
-	  int i=0;
-	  for (auto src: sources_copy) {
-
-	    // Only charge fees for first-generation offshore inputs
-	    if (!src.first_generation_input) {
-	      MINFO("Input was not created using XHV - no speculation fee applied");
-	      continue;
-	    }
-	    if (pr.unused1 < src.pr.unused1) {
-	      // current exchange rate less than when the input was created - how old is it?
-
-	      boost::multiprecision::uint128_t ma_diff = (src.pr.unused1 - pr.unused1);
-	      ma_diff *= src.amount;
-	      ma_diff /= 1000000000000;
-	      
-	      // Check the age of the input
-	      uint64_t age = current_height - src.height;
-	      uint64_t fee_addition = 0;
-	      if (priority == 4) {
-		if (age < (30 * 24)) {
-		  // Calculate the speculation fee
-		  fee_addition = (uint64_t)ma_diff / 2;
-		} else if (age < (30 * 48)) {
-		  // Calculate the speculation fee
-		  fee_addition = ((uint64_t)ma_diff * 4) / 10;
-		} else if (age < (30 * 120)) {
-		  // Calculate the speculation fee
-		  fee_addition = (uint64_t)ma_diff / 10;
-		}
-	      } else if (priority == 3) {
-		if (age < (30 * 120)) {
-		  // Calculate the speculation fee
-		  fee_addition = (uint64_t)ma_diff / 10;
-		}
-	      }
-	      MINFO("Input created using XHV - amount = " << print_money(src.amount) << ", age = " << age);
-	      MINFO("Original MA = " << print_money(src.pr.unused1) << ", speculation fee " << print_money(fee_addition) << " applied");
-	      speculation_fee += fee_addition;
-	    }
-	  }
-	}
-      }
-    
-      // Return the fee
-      MINFO("Priority = " << priority << ", spot price = " << print_money((uint64_t)pr.xUSD) << ", MA = " << print_money(pr.unused1));
-      MINFO("Conversion fee = " << print_money((uint64_t)conversion_fee) << ", speed fee = " << print_money(speed_fee) << ", speculation fee = " << print_money(speculation_fee));
-      fee_estimate = (uint64_t)conversion_fee + speed_fee + speculation_fee;
+      // Flat 0.5% fee
+      fee_estimate = amount_usd / 200;
       
     } else if (fees_version >= 2) {
-
       // The tests have to be written largest unlock_time first, as it is possible to delay the construction of the TX using GDB etc
       // which would otherwise cause the umlock_time to fall through the gaps and give a minimum fee for a short unlock_time.
       // This way, the code is safe, and the fee is always correct.
       fee_estimate =
-	(unlock_time >= 5040) ? (amount_usd / 500) :
-	(unlock_time >= 1440) ? (amount_usd / 20) :
-	(unlock_time >= 720) ? (amount_usd / 10) :
-	amount_usd / 5;
+      (unlock_time >= 5040) ? (amount_usd / 500) :
+      (unlock_time >= 1440) ? (amount_usd / 20) :
+      (unlock_time >= 720) ? (amount_usd / 10) :
+      amount_usd / 5;
 
     } else {
       // Get the delta
@@ -695,130 +477,21 @@ namespace cryptonote
   //---------------------------------------------------------------
   bool get_offshore_to_offshore_fee(const std::vector<cryptonote::tx_destination_entry> dsts, const uint32_t unlock_time, const offshore::pricing_record &pr, const uint32_t fees_version, uint64_t &fee_estimate, const std::vector<cryptonote::tx_source_entry> sources, const uint64_t current_height) {
 
-    // Calculate the amount being sent
-    auto dsts_copy = dsts;
-    // Exclude the change
-    dsts_copy.pop_back();
-    uint64_t amount_usd = 0;
-    for (auto dt: dsts_copy) {
-      if (0 == dt.amount_usd) {
-	MERROR("No USD amount specified for destination");
-	return false;
-      }
-      amount_usd += dt.amount_usd;
-    }
+    // // Calculate the amount being sent
+    // auto dsts_copy = dsts;
+    // // Exclude the change
+    // dsts_copy.pop_back();
+    // uint64_t amount_usd = 0;
+    // for (auto dt: dsts_copy) {
+    //   // if (0 == dt.amount_usd) {
+    //   //   MERROR("No USD amount specified for destination");
+    //   //   return false;
+    //   // }
+    //   amount_usd += dt.amount_usd;
+    // }
 
-    if (0/*fees_version >= 3*/) {
-
-      // Get the delta
-      // abs() implementation for uint64_t's
-      uint64_t delta = (pr.unused1 > pr.xUSD) ? pr.unused1 - pr.xUSD : pr.xUSD - pr.unused1;
-      
-      // Work out the priority 
-      uint32_t priority =
-	(unlock_time >= 7200) ? 1 :
-	(unlock_time >= 3600) ? 2 :
-	(unlock_time >= 1440) ? 3 :
-	4;
-
-      // NEAC: temporarily force the priority to 4 because we don't use it for faster unlocks yet
-      priority = 4;
-     
-      // Estimate the fee components
-      boost::multiprecision::uint128_t conversion_fee = amount_usd / 500;
-      conversion_fee *= priority;
-      boost::multiprecision::uint128_t conversion_extra = delta;
-      conversion_extra *= amount_usd;
-      uint64_t speed_fee = 0;
-      uint64_t speculation_fee = 0;
-      switch (priority) {
-      case 4:
-	conversion_extra *= 110;
-	conversion_extra /= (100 * 1000000000000);
-	conversion_fee += conversion_extra;
-	break;
-      case 3:
-	conversion_extra /= 1000000000000;
-	conversion_fee += conversion_extra;
-	break;
-      case 2:
-	conversion_extra *= 75;
-	conversion_extra /= (100 * 1000000000000);
-	conversion_fee += conversion_extra;
-	break;
-      case 1:
-      default:
-	conversion_extra *= 25;
-	conversion_extra /= (100 * 1000000000000);
-	conversion_fee += conversion_extra;
-	break;
-      }
-
-      // Calculate the speed fee and speculation fee
-      if (sources.size() == 0) {
-	// Best-case estimates for now
-	speed_fee =
-	  (priority == 4) ? amount_usd / 50 :
-	  (priority == 3) ? amount_usd / 125 :
-	  0;
-      } else {
-
-	// Take a copy of the sources, so we can sort by age
-	auto sources_copy = sources;
-	std::sort(sources_copy.begin(), sources_copy.end(),
-		  [](const tx_source_entry &a, const tx_source_entry &b) { return a.height < b.height; });
-      
-	for (auto src: sources_copy) {
-
-	  // Only charge fees for first-generation offshore inputs
-	  if (!src.first_generation_input) {
-	    MINFO("Input was not created using XHV - no speculation fee applied");
-	    continue;
-	  }
-	  if (pr.unused1 < src.pr.unused1) {
-	    // current exchange rate less than when the input was created - how old is it?
-
-	    boost::multiprecision::uint128_t ma_diff = (src.pr.unused1 - pr.unused1);
-	    ma_diff *= src.amount;
-	    ma_diff /= 1000000000000;
-	      
-	    // Check the age of the input
-	    uint64_t age = current_height - src.height;
-	    uint64_t fee_addition = 0;
-	    if (priority == 4) {
-	      if (age < (30 * 24)) {
-		// Calculate the speculation fee
-		fee_addition = (uint64_t)ma_diff / 2;
-	      } else if (age < (30 * 48)) {
-		// Calculate the speculation fee
-		fee_addition = ((uint64_t)ma_diff * 4) / 10;
-	      } else if (age < (30 * 120)) {
-		// Calculate the speculation fee
-		fee_addition = (uint64_t)ma_diff / 10;
-	      }
-	    } else if (priority == 3) {
-	      if (age < (30 * 120)) {
-		// Calculate the speculation fee
-		fee_addition = (uint64_t)ma_diff / 10;
-	      }
-	    }
-	    MINFO("Input created using XHV - amount = " << print_money(src.amount) << ", age = " << age);
-	    MINFO("Original MA = " << print_money(src.pr.unused1) << ", speculation fee " << print_money(fee_addition) << " applied");
-	    speculation_fee += fee_addition;
-	  }
-	}
-      }
-    
-      // Return the fee
-      MINFO("Priority = " << priority << ", spot price = " << print_money((uint64_t)pr.xUSD) << ", MA = " << print_money(pr.unused1));
-      MINFO("Speculation fee = " << print_money(speculation_fee));
-      fee_estimate = speculation_fee;
-      
-    } else {
-
-      // Only conventional TX fees prior to fees v3
-      fee_estimate = 0;
-    }
+    // Only conventional TX fees prior to fees v3
+    fee_estimate = 0;
     
     // Return success
     return true;
@@ -827,20 +500,29 @@ namespace cryptonote
   bool get_xasset_to_xusd_fee(const std::vector<cryptonote::tx_destination_entry> dsts, const uint32_t unlock_time, const offshore::pricing_record &pr, const uint32_t fees_version, uint64_t &fee_estimate, const std::vector<cryptonote::tx_source_entry> sources, const uint64_t height) {
 
     // Calculate the amount being sent
-    auto dsts_copy = dsts;
-    // Exclude the change
-    dsts_copy.pop_back();
     uint64_t amount_xasset = 0;
-    for (auto dt: dsts_copy) {
-      if (0 == dt.amount_xasset) {
-	MERROR("No xAsset amount specified for destination");
-	return false;
+    for (auto dt: dsts) {
+      // if (0 == dt.amount_xasset) {
+      //   MERROR("No xAsset amount specified for destination");
+      //   return false;
+      // }
+      // Filter out the change, which is never converted
+      if (dt.amount_usd != 0) {
+        amount_xasset += dt.amount_xasset;
       }
-      amount_xasset += dt.amount_xasset;
     }
 
-    // Calculate 0.3% of the total being sent
-    fee_estimate = (amount_xasset * 3) / 1000;
+    if (fees_version >= 3) {
+      // Calculate 0.5% of the total being sent
+      boost::multiprecision::uint128_t amount_128 = amount_xasset;
+      amount_128 = (amount_128 * 5) / 1000; // 0.5%
+      fee_estimate  = (uint64_t)amount_128;
+    } else {
+      // Calculate 0.3% of the total being sent
+      boost::multiprecision::uint128_t amount_128 = amount_xasset;
+      amount_128 = (amount_128 * 3) / 1000;
+      fee_estimate = (uint64_t)amount_128;
+    }
 
     // Return success
     return true;
@@ -849,24 +531,215 @@ namespace cryptonote
   bool get_xusd_to_xasset_fee(const std::vector<cryptonote::tx_destination_entry> dsts, const uint32_t unlock_time, const offshore::pricing_record &pr, const uint32_t fees_version, uint64_t &fee_estimate, const std::vector<cryptonote::tx_source_entry> sources, const uint64_t height) {
 
     // Calculate the amount being sent
-    auto dsts_copy = dsts;
-    // Exclude the change
-    dsts_copy.pop_back();
     uint64_t amount_usd = 0;
-    for (auto dt: dsts_copy) {
-      if (0 == dt.amount_usd) {
-	MERROR("No USD amount specified for destination");
-	return false;
+    for (auto dt: dsts) {
+      // if (0 == dt.amount_usd) {
+      //   MERROR("No USD amount specified for destination");
+      //   return false;
+      // }
+      // Filter out the change, which is never converted
+      // All other destinations should have both pre and post converted amounts set so far except
+      // the change destinations.
+      if (dt.amount_xasset != 0) {
+        amount_usd += dt.amount_usd;
       }
-      amount_usd += dt.amount_usd;
     }
 
-    // Calculate 0.3% of the total being sent
-    fee_estimate = (amount_usd * 3) / 1000;
+    if (fees_version >= 3) {
+      // Calculate 0.5% of the total being sent
+      boost::multiprecision::uint128_t amount_128 = amount_usd;
+      amount_128 = (amount_128 * 5) / 1000; // 0.5%
+      fee_estimate  = (uint64_t)amount_128;
+    } else {
+      // Calculate 0.3% of the total being sent
+      boost::multiprecision::uint128_t amount_128 = amount_usd;
+      amount_128 = (amount_128 * 3) / 1000;
+      fee_estimate = (uint64_t)amount_128;
+    }
 
     // Return success
     return true;
   }
+
+  /*
+    Returns the input and output asset types for a given tx.
+  */
+  bool get_tx_asset_types(const transaction& tx, const crypto::hash &txid, std::string& source, std::string& destination, const bool is_miner_tx) {
+
+    // Clear the source
+    std::set<std::string> source_asset_types;
+    source = "";
+    for (size_t i = 0; i < tx.vin.size(); i++) {
+      if (tx.vin[i].type() == typeid(txin_gen)) {
+        if (!is_miner_tx) {
+          LOG_ERROR("txin_gen detected in non-miner TX. Rejecting..");
+          return false;
+        }
+        source_asset_types.insert("XHV");
+      } else if (tx.vin[i].type() == typeid(txin_to_key)) {
+        source_asset_types.insert("XHV");
+      } else if (tx.vin[i].type() == typeid(txin_offshore)) {
+        source_asset_types.insert("XUSD");
+      } else if (tx.vin[i].type() == typeid(txin_onshore)) {
+        source_asset_types.insert("XUSD");
+      } else if (tx.vin[i].type() == typeid(txin_xasset)) {
+        std::string xasset = boost::get<txin_xasset>(tx.vin[i]).asset_type;
+        if (xasset == "XHV" || xasset == "XUSD") {
+          LOG_ERROR("XHV or XUSD found in a xasset input. Rejecting..");
+          return false;
+        }
+        source_asset_types.insert(xasset);
+      } else {
+        LOG_ERROR("txin_to_script / txin_to_scripthash detected. Rejecting..");
+        return false;
+      }
+    }
+
+    std::vector<std::string> sat;
+    sat.reserve(source_asset_types.size());
+    std::copy(source_asset_types.begin(), source_asset_types.end(), std::back_inserter(sat));
+    
+    // Sanity check that we only have 1 source asset type
+    if (sat.size() != 1) {
+      LOG_ERROR("Multiple Source Asset types detected. Rejecting..");
+      return false;
+    }
+    source = sat[0];
+    
+    // Clear the destination
+    std::set<std::string> destination_asset_types;
+    destination = "";
+    for (const auto &out: tx.vout) {
+      if (out.target.type() == typeid(txout_to_key)) {
+        destination_asset_types.insert("XHV");
+      } else if (out.target.type() == typeid(txout_offshore)) {
+        destination_asset_types.insert("XUSD");
+      } else if (out.target.type() == typeid(txout_xasset)) {
+        std::string xasset = boost::get<txout_xasset>(out.target).asset_type;
+        if (xasset == "XHV" || xasset == "XUSD") {
+          LOG_ERROR("XHV or XUSD found in a xasset output. Rejecting..");
+          return false;
+        }
+        destination_asset_types.insert(xasset);
+      } else {
+        LOG_ERROR("txout_to_script / txout_to_scripthash detected. Rejecting..");
+        return false;
+      }
+    }
+
+    std::vector<std::string> dat;
+    dat.reserve(destination_asset_types.size());
+    std::copy(destination_asset_types.begin(), destination_asset_types.end(), std::back_inserter(dat));
+    
+    // Check that we have at least 1 destination_asset_type
+    if (!dat.size()) {
+      LOG_ERROR("No supported destinations asset types detected. Rejecting..");
+      return false;
+    }
+    
+    // Handle miner_txs differently - full validation is performed in validate_miner_transaction()
+    if (is_miner_tx) {
+      destination = "XHV";
+    } else {
+    
+      // Sanity check that we only have 1 or 2 destination asset types
+      if (dat.size() > 2) {
+        LOG_ERROR("Too many (" << dat.size() << ") destination asset types detected in non-miner TX. Rejecting..");
+        return false;
+      } else if (dat.size() == 1) {
+        if (dat[0] != source) {
+          LOG_ERROR("Conversion without change detected ([" << source << "] -> [" << dat[0] << "]). Rejecting..");
+          return false;
+        }
+        destination = dat[0];
+      } else {
+        if (dat[0] == source) {
+          destination = dat[1];
+        } else if (dat[1] == source) {
+          destination = dat[0];
+        } else {
+          LOG_ERROR("Conversion outputs are incorrect asset types (source asset type not found - [" << source << "] -> [" << dat[0] << "," << dat[1] << "]). Rejecting..");
+          return false;
+        }
+      }
+    }
+    
+    // check both strSource and strDest are supported.
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), source) == offshore::ASSET_TYPES.end()) {
+      LOG_ERROR("Source Asset type " << source << " is not supported! Rejecting..");
+      return false;
+    }
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), destination) == offshore::ASSET_TYPES.end()) {
+      LOG_ERROR("Destination Asset type " << destination << " is not supported! Rejecting..");
+      return false;
+    }
+
+    // Check for the 3 known exploited TXs that converted XJPY to XBTC
+    const std::vector<std::string> exploit_txs = {"4c87e7245142cb33a8ed4f039b7f33d4e4dd6b541a42a55992fd88efeefc40d1",
+                                                  "7089a8faf5bddf8640a3cb41338f1ec2cdd063b1622e3b27923e2c1c31c55418",
+                                                  "ad5d15085594b8f2643f058b05931c3e60966128b4c33298206e70bdf9d41c22"};
+
+    std::string tx_hash = epee::string_tools::pod_to_hex(txid);
+    if (std::find(exploit_txs.begin(), exploit_txs.end(), tx_hash) != exploit_txs.end()) {
+      destination = "XJPY";
+    }
+    return true;
+  }
+
+  //---------------------------------------------------------------
+  bool get_tx_type(const std::string& source, const std::string& destination, transaction_type& type) {
+
+    // check both source and destination are supported.
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), source) == offshore::ASSET_TYPES.end()) {
+      LOG_ERROR("Source Asset type " << source << " is not supported! Rejecting..");
+      return false;
+    }
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), destination) == offshore::ASSET_TYPES.end()) {
+      LOG_ERROR("Destination Asset type " << destination << " is not supported! Rejecting..");
+      return false;
+    }
+
+    // Find the tx type
+    if (source == destination) {
+      if (source == "XHV") {
+        type = transaction_type::TRANSFER;
+      } else if (source == "XUSD") {
+        type = transaction_type::OFFSHORE_TRANSFER;
+      } else {
+        type = transaction_type::XASSET_TRANSFER;
+      }
+    } else {
+      if (source == "XHV" && destination == "XUSD") {
+        type = transaction_type::OFFSHORE;
+      } else if (source == "XUSD" && destination == "XHV") {
+        type = transaction_type::ONSHORE;
+      } else if (source == "XUSD" && destination != "XHV") {
+        type = transaction_type::XUSD_TO_XASSET;
+      } else if (destination == "XUSD" && source != "XHV") {
+        type = transaction_type::XASSET_TO_XUSD;
+      } else {
+        LOG_ERROR("Invalid conversion from " << source << "to" << destination << ". Rejecting..");
+        return false;
+      }
+    }
+
+    // Return success to caller
+    return true;
+  }
+
+  bool tx_pr_height_valid(const uint64_t current_height, const uint64_t pr_height, const crypto::hash& tx_hash) {
+    if (pr_height >= current_height) {
+      return false;
+    }
+    if ((current_height - PRICING_RECORD_VALID_BLOCKS) > pr_height) {
+      // exception for 1 tx that used 11 block old record and is already in the chain.
+      if (epee::string_tools::pod_to_hex(tx_hash) != "3e61439c9f751a56777a1df1479ce70311755b9d42db5bcbbd873c6f09a020a6") {
+        return false;
+      }
+    }
+    return true;
+  }
+
   //---------------------------------------------------------------
   bool construct_tx_with_tx_key(
     const account_keys& sender_account_keys, 
@@ -875,13 +748,17 @@ namespace cryptonote
     std::vector<tx_destination_entry>& destinations, 
     const boost::optional<cryptonote::account_public_address>& change_addr, 
     const std::vector<uint8_t> &extra, 
-    transaction& tx, uint64_t unlock_time, 
+    transaction& tx,
+    transaction_type tx_type,
+    const std::string strSource,
+    const std::string strDest,
+    uint64_t unlock_time, 
     const crypto::secret_key &tx_key, 
     const std::vector<crypto::secret_key> &additional_tx_keys, 
     uint64_t current_height, 
     offshore::pricing_record pr, 
-    uint32_t fees_version, 
-    bool use_offshore_tx_version, 
+    uint32_t fees_version,
+    uint32_t hf_version,
     bool rct, 
     const rct::RCTConfig &rct_config, 
     rct::multisig_out *msout, 
@@ -904,77 +781,40 @@ namespace cryptonote
       msout->c.clear();
     }
 
-    tx.version = use_offshore_tx_version ? CURRENT_TRANSACTION_VERSION : rct ? 2 : 1;
+    if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION){
+      tx.version = 6;
+    } else if (hf_version >= HF_VERSION_HAVEN2) {
+      tx.version = 5;
+    } else if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
+      tx.version = 4;
+    } else if (hf_version >= HF_VERSION_CLSAG) {
+      tx.version = 3;
+    } else {
+      tx.version = 2;
+    }
     tx.unlock_time = unlock_time;
-
-    bool bOffshoreTx = false;
-    tx_extra_offshore offshore_data;
-    if (extra.size()) {
-      // Check to see if this is an offshore tx
-      bOffshoreTx = get_offshore_from_tx_extra(extra, offshore_data);
-    }
-
     tx.extra = extra;
-    crypto::public_key txkey_pub;
 
-    bool offshore = false;
-    bool onshore = false;
-    bool offshore_transfer = false;
-    bool xasset_transfer = false;
-    bool xasset_to_xusd = false;
-    bool xusd_to_xasset = false;
-    std::string strSource = "XHV"; // Default value is needed for non-offshore TXs
-    std::string strDest = "XHV"; // Default value is needed for non-offshore TXs
-    if (bOffshoreTx) {
-      int pos = offshore_data.data.find("-");
-      if (pos != std::string::npos) {
-        // New xAsset-style of offshore_data
-        strSource = offshore_data.data.substr(0,pos);
-        strDest = offshore_data.data.substr(pos+1);
-        if (strSource == "XHV") {
-          offshore = true;
-        } else if (strDest == "XHV") {
-          onshore = true;
-        } else if ((strSource == "XUSD") && (strDest == "XUSD")) {
-          offshore_transfer = true;
-        } else if ((strSource != "XUSD") && (strDest != "XUSD")) {
-          xasset_transfer = true;
-        } else if (strSource == "XUSD") {
-          xusd_to_xasset = true;
-        } else {
-          xasset_to_xusd = true;
-        }
-      } else {
-        // Pre-xAsset format of offshore_data
-        // Set the bool flags
-        if ((offshore_data.data.at(0) > 'A') && (offshore_data.data.at(1) > 'A')) {
-          offshore_transfer = true;
-          strSource = strDest = "XUSD";
-        } else if (offshore_data.data.at(0) > 'A') {
-          onshore = true;
-          strSource = "XUSD";
-          strDest = "XHV";
-        } else {
-          offshore = true;
-          strSource = "XHV";
-          strDest = "XUSD";
-        }
-      }
+    // check both strSource and strDest are supported.
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strSource) == offshore::ASSET_TYPES.end()) {
+      LOG_ERROR("Unsupported source asset type " << strSource);
+      return false;
+    }
+    if (std::find(offshore::ASSET_TYPES.begin(), offshore::ASSET_TYPES.end(), strDest) == offshore::ASSET_TYPES.end()) {
+      LOG_ERROR("Unsupported destination asset type " << strDest);
+      return false;
+    }
+    if (tx_type == transaction_type::UNSET) {
+      LOG_ERROR("Invalid TX Type!");
+      return false;
     }
 
-    const bool use_offshore_outputs = onshore || offshore_transfer || xusd_to_xasset;
-    const bool use_xasset_outputs = xasset_transfer || xasset_to_xusd;
-
-    if (bOffshoreTx) {
-
-      if (offshore || onshore || xasset_to_xusd || xusd_to_xasset) {
-        tx.pricing_record_height = current_height;
-        tx.offshore_data.assign(offshore_data.data.begin(), offshore_data.data.end());
-      } else {
-        tx.pricing_record_height = 0;
-        tx.offshore_data.assign(offshore_data.data.begin(), offshore_data.data.end());
-      }
-      
+    const bool use_offshore_outputs = (strSource == "XUSD");
+    const bool use_xasset_outputs = (strSource != "XHV" && strSource != "XUSD");
+    if (strSource != strDest) {
+      tx.pricing_record_height = current_height;
+    } else {
+      tx.pricing_record_height = 0;
     }
 
     // if we have a stealth payment id, find it and encrypt it with the tx key now
@@ -1102,7 +942,7 @@ namespace cryptonote
       }
 
       //put key image into tx input
-      if (offshore_transfer || xusd_to_xasset) {  // input is xUSD
+      if (tx_type == transaction_type::OFFSHORE_TRANSFER || tx_type == transaction_type::XUSD_TO_XASSET) { // input is xUSD
 
         // In-wallet swap
         txin_offshore input_to_key;
@@ -1116,7 +956,7 @@ namespace cryptonote
         input_to_key.key_offsets = absolute_output_offsets_to_relative(input_to_key.key_offsets);
         tx.vin.push_back(input_to_key);
 	
-      } else if (onshore) {   // input is xUSD
+      } else if (tx_type == transaction_type::ONSHORE) {   // input is xUSD
 
         // Onshoring
         txin_onshore input_to_key;
@@ -1130,7 +970,7 @@ namespace cryptonote
         input_to_key.key_offsets = absolute_output_offsets_to_relative(input_to_key.key_offsets);
         tx.vin.push_back(input_to_key);
         
-      } else if (xasset_to_xusd || xasset_transfer) {  // input is xAsset
+      } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XASSET_TRANSFER) {  // input is xAsset
 
         // xAsset to xUSD
         txin_xasset input_to_key;
@@ -1169,13 +1009,10 @@ namespace cryptonote
     uint64_t offshore_fee_usd = 0;
     uint64_t offshore_fee_xasset = 0;
     bool r =
-      (offshore) ? get_offshore_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee, sources, current_height) :
-            (onshore) ? get_onshore_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_usd, sources, current_height) :
-      (offshore_transfer) ? get_offshore_to_offshore_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_usd, sources, current_height) :
-      (xusd_to_xasset) ? get_xusd_to_xasset_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_usd, sources, current_height) :
-      (xasset_to_xusd) ? get_xasset_to_xusd_fee(destinations, unlock_time-current_height-1, pr, fees_version, offshore_fee_xasset, sources, current_height) :
-      (xasset_transfer) ? true :
-      true;
+      (tx_type == transaction_type::OFFSHORE) ? get_offshore_fee(destinations, unlock_time - current_height - 1, pr, fees_version, offshore_fee, sources, current_height) :
+      (tx_type == transaction_type::ONSHORE) ? get_onshore_fee(destinations, unlock_time - current_height - 1, pr, fees_version, offshore_fee_usd, sources, current_height) :
+      (tx_type == transaction_type::XUSD_TO_XASSET) ? get_xusd_to_xasset_fee(destinations, unlock_time - current_height - 1, pr, fees_version, offshore_fee_usd, sources, current_height) :
+      (tx_type == transaction_type::XASSET_TO_XUSD) ? get_xasset_to_xusd_fee(destinations, unlock_time - current_height - 1, pr, fees_version, offshore_fee_xasset, sources, current_height) : true;
     if (!r) {
       LOG_ERROR("failed to get offshore fee - aborting");
       return false;
@@ -1191,15 +1028,15 @@ namespace cryptonote
     for (size_t n = 0; n < sources.size(); ++n)
       ins_order[n] = n;
     std::sort(ins_order.begin(), ins_order.end(), [&](const size_t i0, const size_t i1) {
-      if (offshore_transfer || xusd_to_xasset) {
+      if (tx_type == transaction_type::OFFSHORE_TRANSFER || tx_type == transaction_type::XUSD_TO_XASSET) {
         const txin_offshore &tk0 = boost::get<txin_offshore>(tx.vin[i0]);
         const txin_offshore &tk1 = boost::get<txin_offshore>(tx.vin[i1]);
         return memcmp(&tk0.k_image, &tk1.k_image, sizeof(tk0.k_image)) > 0;
-      } else if (onshore) {
+      } else if (tx_type == transaction_type::ONSHORE) {
         const txin_onshore &tk0 = boost::get<txin_onshore>(tx.vin[i0]);
         const txin_onshore &tk1 = boost::get<txin_onshore>(tx.vin[i1]);
         return memcmp(&tk0.k_image, &tk1.k_image, sizeof(tk0.k_image)) > 0;
-      } else if (xasset_to_xusd || xasset_transfer) {
+      } else if (tx_type == transaction_type::XASSET_TO_XUSD || tx_type == transaction_type::XASSET_TRANSFER) {
         const txin_xasset &tk0 = boost::get<txin_xasset>(tx.vin[i0]);
         const txin_xasset &tk1 = boost::get<txin_xasset>(tx.vin[i1]);
         return memcmp(&tk0.k_image, &tk1.k_image, sizeof(tk0.k_image)) > 0;
@@ -1222,6 +1059,7 @@ namespace cryptonote
     classify_addresses(destinations, change_addr, num_stdaddresses, num_subaddresses, single_dest_subaddress);
 
     // if this is a single-destination transfer to a subaddress, we set the tx pubkey to R=s*D
+    crypto::public_key txkey_pub;
     if (num_stdaddresses == 0 && num_subaddresses == 1)
     {
       txkey_pub = rct::rct2pk(hwdev.scalarmultKey(rct::pk2rct(single_dest_subaddress.m_spend_public_key), rct::sk2rct(tx_key)));
@@ -1250,7 +1088,10 @@ namespace cryptonote
     uint64_t amount_out = 0;
 
     //fill outputs
+    tx.amount_minted = tx.amount_burnt = 0;
     size_t output_index = 0;
+    bool found_change = false;
+
     for(const tx_destination_entry& dst_entr: destinations)
     {
       CHECK_AND_ASSERT_MES(dst_entr.amount > 0 || tx.version > 1, false, "Destination with wrong amount: " << dst_entr.amount);
@@ -1284,17 +1125,35 @@ namespace cryptonote
         tk.key = out_eph_public_key;
         out.target = tk;
         out.amount = dst_entr_clone.amount_usd;
-         outamounts.push_back(std::pair<std::string, uint64_t>("XUSD", dst_entr_clone.amount_usd));
+        outamounts.push_back(std::pair<std::string, uint64_t>("XUSD", dst_entr_clone.amount_usd));
       } else {
         txout_xasset tk;
         tk.key = out_eph_public_key;
-	tk.asset_type = dst_entr_clone.asset_type;
+        tk.asset_type = dst_entr_clone.asset_type;
         out.target = tk;
         out.amount = dst_entr_clone.amount_xasset;
         outamounts.push_back(std::pair<std::string, uint64_t>(dst_entr_clone.asset_type, dst_entr_clone.amount_xasset));
       }
 
-      // pusdh to outputs
+      // Check for per-output-unlocks
+      if (hf_version >= HF_PER_OUTPUT_UNLOCK_VERSION && strSource != strDest) {
+        if (dst_entr_clone.asset_type == strDest) {
+          // Destination amount - needs a full unlock time
+          tx.output_unlock_times.push_back(tx.unlock_time);
+        } else if (dst_entr_clone.asset_type == strSource) {
+          // Source amount - unlock time can be shorter ("0" means "minimum allowed" = 10 blocks unlock)
+          tx.output_unlock_times.push_back(0);
+        } else {
+          // Should never happen
+          LOG_ERROR("Invalid asset type detected: source = " << strSource << ", dest = " << strDest << ", detected " << dst_entr_clone.asset_type);
+          return false;
+        }
+      } else {
+        // Put 0s in the output-unlock-times
+        tx.output_unlock_times.push_back(0);
+      }
+      
+      // push to outputs
       tx.vout.push_back(out);
       output_index++;
 
@@ -1302,6 +1161,18 @@ namespace cryptonote
       summary_outs_money += dst_entr_clone.amount;
       summary_outs_money_usd += dst_entr_clone.amount_usd;
       summary_outs_money_xasset += dst_entr_clone.amount_xasset;
+      if (strSource != strDest) {
+        if (dst_entr_clone.asset_type == strDest) {
+          tx.amount_minted += out.amount;
+          if (tx_type == transaction_type::OFFSHORE) {
+            tx.amount_burnt += dst_entr_clone.amount;
+          } else if (tx_type == transaction_type::ONSHORE || tx_type == transaction_type::XUSD_TO_XASSET) {
+            tx.amount_burnt += dst_entr_clone.amount_usd;
+          } else if (tx_type == transaction_type::XASSET_TO_XUSD) {
+            tx.amount_burnt += dst_entr_clone.amount_xasset;
+          }
+        }
+      }
 
       destination_keys.push_back(rct::pk2rct(out_eph_public_key));
     }
@@ -1323,6 +1194,15 @@ namespace cryptonote
       return false;
     }
 
+    // Add 80% of the conversion fee to the amount burnt
+    if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
+      if (tx_type == transaction_type::XUSD_TO_XASSET) {
+        tx.amount_burnt += (offshore_fee_usd * 4) / 5;
+      } else if (tx_type == transaction_type::XASSET_TO_XUSD) {
+        tx.amount_burnt += (offshore_fee_xasset * 4) / 5;
+      }
+    }
+    
     //check money
     LOG_ERROR("SIM=" << summary_inputs_money);
     LOG_ERROR("SIMu=" << summary_inputs_money_usd);
@@ -1330,6 +1210,12 @@ namespace cryptonote
     LOG_ERROR("SOM=" << summary_outs_money);
     LOG_ERROR("SOMu=" << summary_outs_money_usd);
     LOG_ERROR("SOMX=" << summary_outs_money_xasset);
+    CHECK_AND_ASSERT_MES(summary_inputs_money < HAVEN_MAX_TX_VALUE, false, "XHV inputs are too much");
+    CHECK_AND_ASSERT_MES(summary_inputs_money_usd < HAVEN_MAX_TX_VALUE, false, "xUSD inputs are too much");
+    CHECK_AND_ASSERT_MES(summary_inputs_money_xasset < HAVEN_MAX_TX_VALUE, false, "xAsset inputs are too much");
+    CHECK_AND_ASSERT_MES(summary_outs_money < HAVEN_MAX_TX_VALUE, false, "XHV outputs are too much");
+    CHECK_AND_ASSERT_MES(summary_outs_money_usd < HAVEN_MAX_TX_VALUE, false, "xUSD outputs are too much");
+    CHECK_AND_ASSERT_MES(summary_outs_money_xasset < HAVEN_MAX_TX_VALUE, false, "xAsset outputs are too much");
     
     // check for watch only wallet
     bool zero_secret_key = true;
@@ -1340,227 +1226,145 @@ namespace cryptonote
       MDEBUG("Null secret key, skipping signatures");
     }
 
-    if (tx.version == 1)
+    size_t n_total_outs = sources[0].outputs.size(); // only for non-simple rct
+
+    uint64_t amount_in = 0;
+    rct::ctkeyV inSk;
+    inSk.reserve(sources.size());
+    // mixRing indexing is done the other way round for simple
+    rct::ctkeyM mixRing(sources.size());
+    std::vector<uint64_t> inamounts;
+    std::vector<unsigned int> index;
+    std::vector<rct::multisig_kLRki> kLRki;
+    for (size_t i = 0; i < sources.size(); ++i)
     {
-      //generate ring signatures
-      crypto::hash tx_prefix_hash;
-      get_transaction_prefix_hash(tx, tx_prefix_hash);
-
-      std::stringstream ss_ring_s;
-      size_t i = 0;
-      for(const tx_source_entry& src_entr:  sources)
-      {
-        ss_ring_s << "pub_keys:" << ENDL;
-        std::vector<const crypto::public_key*> keys_ptrs;
-        std::vector<crypto::public_key> keys(src_entr.outputs.size());
-        size_t ii = 0;
-        for(const tx_source_entry::output_entry& o: src_entr.outputs)
-        {
-          keys[ii] = rct2pk(o.second.dest);
-          keys_ptrs.push_back(&keys[ii]);
-          ss_ring_s << o.second.dest << ENDL;
-          ++ii;
-        }
-
-        tx.signatures.push_back(std::vector<crypto::signature>());
-        std::vector<crypto::signature>& sigs = tx.signatures.back();
-        sigs.resize(src_entr.outputs.size());
-        if (!zero_secret_key)
-          crypto::generate_ring_signature(tx_prefix_hash, boost::get<txin_to_key>(tx.vin[i]).k_image, keys_ptrs, in_contexts[i].in_ephemeral.sec, src_entr.real_output, sigs.data());
-        ss_ring_s << "signatures:" << ENDL;
-        std::for_each(sigs.begin(), sigs.end(), [&](const crypto::signature& s){ss_ring_s << s << ENDL;});
-        ss_ring_s << "prefix_hash:" << tx_prefix_hash << ENDL << "in_ephemeral_key: " << in_contexts[i].in_ephemeral.sec << ENDL << "real_output: " << src_entr.real_output << ENDL;
-        i++;
-      }
-
-      MCINFO("construct_tx", "transaction_created: " << get_transaction_hash(tx) << ENDL << obj_to_json_str(tx) << ENDL << ss_ring_s.str());
-    }
-    else
-    {
-      size_t n_total_outs = sources[0].outputs.size(); // only for non-simple rct
-
-      // the non-simple version is slightly smaller, but assumes all real inputs
-      // are on the same index, so can only be used if there just one ring.
-      bool use_simple_rct = sources.size() > 1 || rct_config.range_proof_type != rct::RangeProofBorromean;
-
-      if (!use_simple_rct)
-      {
-        // non simple ringct requires all real inputs to be at the same index for all inputs
-        for(const tx_source_entry& src_entr:  sources)
-        {
-          if(src_entr.real_output != sources.begin()->real_output)
-          {
-            LOG_ERROR("All inputs must have the same index for non-simple ringct");
-            return false;
-          }
-        }
-
-        // enforce same mixin for all outputs
-        for (size_t i = 1; i < sources.size(); ++i) {
-          if (n_total_outs != sources[i].outputs.size()) {
-            LOG_ERROR("Non-simple ringct transaction has varying ring size");
-            return false;
-          }
-        }
-      }
-
-      uint64_t amount_in = 0;
-      rct::ctkeyV inSk;
-      inSk.reserve(sources.size());
-      // mixRing indexing is done the other way round for simple
-      rct::ctkeyM mixRing(use_simple_rct ? sources.size() : n_total_outs);
-      std::vector<uint64_t> inamounts;
-      std::vector<unsigned int> index;
-      std::vector<rct::multisig_kLRki> kLRki;
-      for (size_t i = 0; i < sources.size(); ++i)
-      {
-	      rct::ctkey ctkey;
-        rct::ctkeyV ctkeyV; // LA
-        
-        inamounts.push_back(sources[i].amount);
-        index.push_back(sources[i].real_output);
-        // inSk: (secret key, mask)
-        ctkey.dest = rct::sk2rct(in_contexts[i].in_ephemeral.sec);
-        ctkey.mask = sources[i].mask;
-	      ctkeyV.push_back(ctkey);
-        inSk.push_back(ctkey);
-        memwipe(&ctkey, sizeof(rct::ctkey));
-        // inPk: (public key, commitment)
-        // will be done when filling in mixRing
-        if (msout)
-        {
-          kLRki.push_back(sources[i].multisig_kLRki);
-        }
-      }
+      rct::ctkey ctkey;
+      rct::ctkeyV ctkeyV; // LA
       
-      if (use_simple_rct)
+      inamounts.push_back(sources[i].amount);
+      index.push_back(sources[i].real_output);
+      // inSk: (secret key, mask)
+      ctkey.dest = rct::sk2rct(in_contexts[i].in_ephemeral.sec);
+      ctkey.mask = sources[i].mask;
+      ctkeyV.push_back(ctkey);
+      inSk.push_back(ctkey);
+      memwipe(&ctkey, sizeof(rct::ctkey));
+      // inPk: (public key, commitment)
+      // will be done when filling in mixRing
+      if (msout)
       {
-        // mixRing indexing is done the other way round for simple
-        for (size_t i = 0; i < sources.size(); ++i)
-        {
-          mixRing[i].resize(sources[i].outputs.size());
-          for (size_t n = 0; n < sources[i].outputs.size(); ++n)
-          {
-            mixRing[i][n] = sources[i].outputs[n].second;
-          }
-        }
+        kLRki.push_back(sources[i].multisig_kLRki);
       }
-      else
-      {
-        for (size_t i = 0; i < n_total_outs; ++i) // same index assumption
-        {
-          mixRing[i].resize(sources.size());
-          for (size_t n = 0; n < sources.size(); ++n)
-          {
-            mixRing[i][n] = sources[n].outputs[i].second;
-          }
-        }
-      }
-
-      if (summary_inputs_money > summary_outs_money) {
-        fee = summary_inputs_money - summary_outs_money - offshore_fee;
-        if (!use_simple_rct) {
-          outamounts.push_back(std::pair<std::string, uint64_t>("XHV", fee));
-        }
-      } else if (summary_inputs_money_usd > summary_outs_money_usd) {
-        fee_usd = summary_inputs_money_usd - summary_outs_money_usd - offshore_fee_usd;
-        if (!use_simple_rct) {
-          outamounts.push_back(std::pair<std::string, uint64_t>("XUSD", fee_usd));
-        }
-      } else if (summary_inputs_money_xasset > summary_outs_money_xasset) {
-	      fee_xasset = summary_inputs_money_xasset - summary_outs_money_xasset - offshore_fee_xasset;
-        if (!use_simple_rct) {
-          outamounts.push_back(std::pair<std::string, uint64_t>(strSource, fee_xasset));
-        }
-      }
-
-      // zero out all amounts to mask rct outputs, real amounts are now encrypted
-      for (size_t i = 0; i < tx.vin.size(); ++i)
-      {
-        if (sources[i].rct) {
-          if (tx.vin[i].type() == typeid(txin_offshore)) {
-	          boost::get<txin_offshore>(tx.vin[i]).amount = 0;
-	        }
-          else if (tx.vin[i].type() == typeid(txin_onshore)) {
-            boost::get<txin_onshore>(tx.vin[i]).amount = 0;
-          }
-          else if (tx.vin[i].type() == typeid(txin_xasset)) {
-            boost::get<txin_xasset>(tx.vin[i]).amount = 0;
-          }
-          else {
-            boost::get<txin_to_key>(tx.vin[i]).amount = 0;
-          }
-        }
-      }
-
-      // zero out destination amounts
-      for (size_t i = 0; i < tx.vout.size(); ++i) {
-        // fill the amount minted before amounts go encrypted if it is a conversion
-        if (bOffshoreTx) {
-          if (offshore && tx.vout[i].target.type() == typeid(txout_offshore))
-            tx.amount_minted += tx.vout[i].amount;
-          else if (onshore && tx.vout[i].target.type() == typeid(txout_to_key))
-            tx.amount_minted += tx.vout[i].amount;
-          else if (xusd_to_xasset && tx.vout[i].target.type() == typeid(txout_xasset))
-            tx.amount_minted += tx.vout[i].amount;
-          else if (xasset_to_xusd && tx.vout[i].target.type() == typeid(txout_offshore))
-            tx.amount_minted += tx.vout[i].amount;
-        }
-        tx.vout[i].amount = 0;
-      }
-
-      // Calculate amount_burnt from the amount_minted
-      if (bOffshoreTx) {
-        if (offshore) {
-          double d_xusd_amount = boost::lexical_cast<double>(tx.amount_minted);
-          double d_exchange_rate = boost::lexical_cast<double>(pr.unused1);
-          tx.amount_burnt = (uint64_t)((d_xusd_amount / d_exchange_rate) * 1000000000000.0);
-        } else if (onshore) {
-          double d_xhv_amount = boost::lexical_cast<double>(tx.amount_minted) / 1000000000000.0;
-          double d_exchange_rate = boost::lexical_cast<double>(pr.unused1);
-          tx.amount_burnt = (uint64_t)(d_xhv_amount * d_exchange_rate);
-        } else if (offshore_transfer) {
-          tx.amount_burnt = tx.amount_minted = 0;
-        } else if (xusd_to_xasset) {
-          double d_xasset_amount = boost::lexical_cast<double>(tx.amount_minted);
-          double d_exchange_rate = boost::lexical_cast<double>(pr[strDest]);
-          tx.amount_burnt = (uint64_t)((d_xasset_amount / d_exchange_rate) * 1000000000000.0);
-        } else if (xasset_to_xusd) {
-          double d_xusd_amount = boost::lexical_cast<double>(tx.amount_minted) / 1000000000000.0;
-          double d_exchange_rate = boost::lexical_cast<double>(pr[strSource]);
-          tx.amount_burnt = (uint64_t)(d_xusd_amount * d_exchange_rate);
-        } else if (xasset_transfer) {
-          tx.amount_burnt = tx.amount_minted = 0;
-        }
-        if ((offshore || onshore || xasset_to_xusd || xusd_to_xasset) && (!tx.amount_burnt || !tx.amount_minted)) {
-          LOG_ERROR("Invalid offshore TX - amount too small (<1 ATOMIC_UNIT)");
-          return false;
-        }
-      }
-      
-      crypto::hash tx_prefix_hash;
-      get_transaction_prefix_hash(tx, tx_prefix_hash, hwdev);
-      rct::ctkeyV outSk;
-      if (use_simple_rct)
-        tx.rct_signatures = rct::genRctSimple(rct::hash2rct(tx_prefix_hash), inSk, destination_keys, inamounts, strSource, outamounts, fee, fee_usd, fee_xasset, offshore_fee, offshore_fee_usd, offshore_fee_xasset, mixRing, amount_keys, msout ? &kLRki : NULL, msout, index, outSk, rct_config, hwdev, pr);
-      else
-        tx.rct_signatures = rct::genRct(rct::hash2rct(tx_prefix_hash), inSk, strSource, destination_keys, outamounts, mixRing, amount_keys, msout ? &kLRki[0] : NULL, msout, sources[0].real_output, outSk, rct_config, hwdev); // same index assumption
-      for (size_t i=0; i<inSk.size(); i++) {
-      	memwipe(&inSk[i], sizeof(rct::ctkeyV));
-      }
-
-      CHECK_AND_ASSERT_MES(tx.vout.size() == outSk.size(), false, "outSk size does not match vout");
-
-      MCINFO("construct_tx", "transaction_created: " << get_transaction_hash(tx) << ENDL << obj_to_json_str(tx) << ENDL);
     }
 
+    // mixRing indexing is done the other way round for simple
+    for (size_t i = 0; i < sources.size(); ++i)
+    {
+      mixRing[i].resize(sources[i].outputs.size());
+      for (size_t n = 0; n < sources[i].outputs.size(); ++n)
+      {
+        mixRing[i][n] = sources[i].outputs[n].second;
+      }
+    }
+
+    if (summary_inputs_money > summary_outs_money) {
+      fee = summary_inputs_money - summary_outs_money - offshore_fee;
+    } else if (summary_inputs_money_usd > summary_outs_money_usd) {
+      fee_usd = summary_inputs_money_usd - summary_outs_money_usd - offshore_fee_usd;
+    } else if (summary_inputs_money_xasset > summary_outs_money_xasset) {
+      fee_xasset = summary_inputs_money_xasset - summary_outs_money_xasset - offshore_fee_xasset;
+    }
+
+    // zero out all amounts to mask rct outputs, real amounts are now encrypted
+    for (size_t i = 0; i < tx.vin.size(); ++i)
+    {
+      if (sources[i].rct) {
+        if (tx.vin[i].type() == typeid(txin_offshore)) {
+          boost::get<txin_offshore>(tx.vin[i]).amount = 0;
+        }
+        else if (tx.vin[i].type() == typeid(txin_onshore)) {
+          boost::get<txin_onshore>(tx.vin[i]).amount = 0;
+        }
+        else if (tx.vin[i].type() == typeid(txin_xasset)) {
+          boost::get<txin_xasset>(tx.vin[i]).amount = 0;
+        }
+        else {
+          boost::get<txin_to_key>(tx.vin[i]).amount = 0;
+        }
+      }
+    }
+
+    // zero out destination amounts
+    for (size_t i = 0; i < tx.vout.size(); ++i) {
+      tx.vout[i].amount = 0;
+    }
+
+    if ((strSource != strDest) && (!tx.amount_burnt || !tx.amount_minted)) {
+      LOG_ERROR("Invalid offshore TX - amount too small (<1 ATOMIC_UNIT)");
+      return false;
+    }
+    
+    crypto::hash tx_prefix_hash;
+    get_transaction_prefix_hash(tx, tx_prefix_hash, hwdev);
+    rct::ctkeyV outSk;
+    tx.rct_signatures = rct::genRctSimple(
+      rct::hash2rct(tx_prefix_hash),
+      inSk,
+      destination_keys,
+      inamounts,
+      strSource,
+      outamounts,
+      fee,
+      fee_usd,
+      fee_xasset,
+      offshore_fee,
+      offshore_fee_usd,
+      offshore_fee_xasset,
+      mixRing,
+      amount_keys,
+      msout ? &kLRki : NULL,
+      msout,
+      index,
+      outSk,
+      rct_config,
+      hwdev,
+      pr,
+      tx.version
+    );
+    for (size_t i=0; i<inSk.size(); i++) {
+      memwipe(&inSk[i], sizeof(rct::ctkeyV));
+    }
+
+    CHECK_AND_ASSERT_MES(tx.vout.size() == outSk.size(), false, "outSk size does not match vout");
+    MCINFO("construct_tx", "transaction_created: " << get_transaction_hash(tx) << ENDL << obj_to_json_str(tx) << ENDL);
     tx.invalidate_hashes();
 
     return true;
   }
   //---------------------------------------------------------------
-  bool construct_tx_and_get_tx_key(const account_keys& sender_account_keys, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_key, std::vector<crypto::secret_key> &additional_tx_keys, uint64_t current_height, offshore::pricing_record pr, uint32_t fees_version, bool use_offshore_tx_version, bool rct, const rct::RCTConfig &rct_config, rct::multisig_out *msout)
-  {
+  bool construct_tx_and_get_tx_key(
+    const account_keys& sender_account_keys,
+    const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses,
+    std::vector<tx_source_entry>& sources,
+    std::vector<tx_destination_entry>& destinations,
+    const boost::optional<cryptonote::account_public_address>& change_addr,
+    const std::vector<uint8_t> &extra,
+    transaction& tx,
+    transaction_type tx_type,
+    const std::string strSource,
+    const std::string strDest,
+    uint64_t unlock_time,
+    crypto::secret_key &tx_key,
+    std::vector<crypto::secret_key> &additional_tx_keys,
+    uint64_t current_height,
+    offshore::pricing_record pr,
+    uint32_t fees_version,
+    uint32_t hf_version,
+    bool rct,
+    const rct::RCTConfig &rct_config,
+    rct::multisig_out *msout
+  ){
+
     hw::device &hwdev = sender_account_keys.get_device();
     hwdev.open_tx(tx_key);
     try {
@@ -1577,24 +1381,35 @@ namespace cryptonote
           additional_tx_keys.push_back(keypair::generate(sender_account_keys.get_device()).sec);
       }
 
-      bool r = construct_tx_with_tx_key(sender_account_keys, subaddresses, sources, destinations, change_addr, extra, tx, unlock_time, tx_key, additional_tx_keys, current_height, pr, fees_version, use_offshore_tx_version, rct, rct_config, msout);
+      bool r = construct_tx_with_tx_key(
+        sender_account_keys,
+        subaddresses,
+        sources,
+        destinations,
+        change_addr,
+        extra, 
+        tx,
+        tx_type,
+        strSource,
+        strDest,
+        unlock_time,
+        tx_key,
+        additional_tx_keys,
+        current_height,
+        pr,
+        fees_version,
+        hf_version,
+        rct,
+        rct_config,
+        msout,
+        true
+      );
       hwdev.close_tx();
       return r;
     } catch(...) {
       hwdev.close_tx();
       throw;
     }
-  }
-  //---------------------------------------------------------------
-  bool construct_tx(const account_keys& sender_account_keys, std::vector<tx_source_entry>& sources, const std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time)
-  {
-     std::unordered_map<crypto::public_key, cryptonote::subaddress_index> subaddresses;
-     subaddresses[sender_account_keys.m_account_address.m_spend_public_key] = {0,0};
-     crypto::secret_key tx_key;
-     offshore::pricing_record pr;
-     std::vector<crypto::secret_key> additional_tx_keys;
-     std::vector<tx_destination_entry> destinations_copy = destinations;
-     return construct_tx_and_get_tx_key(sender_account_keys, subaddresses, sources, destinations_copy, change_addr, extra, tx, unlock_time, tx_key, additional_tx_keys, 0, pr, 1, false, false, { rct::RangeProofBorromean, 0}, NULL);
   }
   //---------------------------------------------------------------
   // bool generate_genesis_block(
@@ -1608,8 +1423,8 @@ namespace cryptonote
   //   bl = {};
   //   account_public_address ac = boost::value_initialized<account_public_address>();
   //   std::vector<size_t> sz;
-  //   std::map<std::string, uint64_t> fee_map, offshore_fee_map;
-  //   construct_miner_tx(0, 0, 0, 0, fee_map, offshore_fee_map, ac, bl.miner_tx, blobdata(), 999, 1, nettype); // zero fee in genesis
+  //   std::map<std::string, uint64_t> fee_map, offshore_fee_map, xasset_fee_map;
+  //   construct_miner_tx(0, 0, 0, 0, fee_map, offshore_fee_map, xasset_fee_map, ac, bl.miner_tx, blobdata(), 999, 1, nettype); // zero fee in genesis
   //   blobdata txb = tx_to_blob(bl.miner_tx);
   //   std::string hex_tx_represent = string_tools::buff_to_hex_nodelimer(txb);
 
@@ -1631,43 +1446,43 @@ namespace cryptonote
   //   return true;
   // }
   //---------------------------------------------------------------
-//   void get_altblock_longhash(const block& b, crypto::hash& res, const uint64_t main_height, const uint64_t height, const uint64_t seed_height, const crypto::hash& seed_hash)
-//   {
-//     blobdata bd = get_block_hashing_blob(b);
-//     rx_slow_hash(main_height, seed_height, seed_hash.data, bd.data(), bd.size(), res.data, 0, 1);
-//   }
+  // void get_altblock_longhash(const block& b, crypto::hash& res, const uint64_t main_height, const uint64_t height, const uint64_t seed_height, const crypto::hash& seed_hash)
+  // {
+  //   blobdata bd = get_block_hashing_blob(b);
+  //   rx_slow_hash(main_height, seed_height, seed_hash.data, bd.data(), bd.size(), res.data, 0, 1);
+  // }
 
-//   bool get_block_longhash(const Blockchain *pbc, const block& b, crypto::hash& res, const uint64_t height, const int miners)
-//   {
-//     block b_local = b; //workaround to avoid const errors with do_serialize
-//     blobdata bd = get_block_hashing_blob(b);
-//     cn_pow_hash_v3 ctx;
-//     if(b_local.major_version >= CRYPTONOTE_V3_POW_BLOCK_VERSION)
-//     {
-//       ctx.hash(bd.data(), bd.size(), res.data);
-//     }
-//     else if(b_local.major_version == CRYPTONOTE_V2_POW_BLOCK_VERSION)
-//     {
-//       cn_pow_hash_v2 ctx_v2 = cn_pow_hash_v2::make_borrowed_v2(ctx);
-//       ctx_v2.hash(bd.data(), bd.size(), res.data);
-//     }
-//     else
-//     {
-//       cn_pow_hash_v1 ctx_v1 = cn_pow_hash_v1::make_borrowed_v1(ctx);
-//       ctx_v1.hash(bd.data(), bd.size(), res.data);
-//     }
-//     return true;
-//   }
+  // bool get_block_longhash(const Blockchain *pbc, const block& b, crypto::hash& res, const uint64_t height, const int miners)
+  // {
+  //   block b_local = b; //workaround to avoid const errors with do_serialize
+  //   blobdata bd = get_block_hashing_blob(b);
+  //   cn_pow_hash_v3 ctx;
+  //   if(b_local.major_version >= CRYPTONOTE_V3_POW_BLOCK_VERSION)
+  //   {
+  //     ctx.hash(bd.data(), bd.size(), res.data);
+  //   }
+  //   else if(b_local.major_version == CRYPTONOTE_V2_POW_BLOCK_VERSION)
+  //   {
+  //     cn_pow_hash_v2 ctx_v2 = cn_pow_hash_v2::make_borrowed_v2(ctx);
+  //     ctx_v2.hash(bd.data(), bd.size(), res.data);
+  //   }
+  //   else
+  //   {
+  //     cn_pow_hash_v1 ctx_v1 = cn_pow_hash_v1::make_borrowed_v1(ctx);
+  //     ctx_v1.hash(bd.data(), bd.size(), res.data);
+  //   }
+  //   return true;
+  // }
 
-//   crypto::hash get_block_longhash(const Blockchain *pbc, const block& b, const uint64_t height, const int miners)
-//   {
-//     crypto::hash p = crypto::null_hash;
-//     get_block_longhash(pbc, b, p, height, miners);
-//     return p;
-//   }
+  // crypto::hash get_block_longhash(const Blockchain *pbc, const block& b, const uint64_t height, const int miners)
+  // {
+  //   crypto::hash p = crypto::null_hash;
+  //   get_block_longhash(pbc, b, p, height, miners);
+  //   return p;
+  // }
 
-//   void get_block_longhash_reorg(const uint64_t split_height)
-//   {
-//     rx_reorg(split_height);
-//   }
+  // void get_block_longhash_reorg(const uint64_t split_height)
+  // {
+  //   rx_reorg(split_height);
+  // }
 }
