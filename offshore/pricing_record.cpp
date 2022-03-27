@@ -30,7 +30,7 @@
 #include "pricing_record.h"
 
 #include "serialization/keyvalue_serialization.h"
-#include "storages/portable_storage.h"
+//#include "storages/portable_storage.h"
 
 #include "string_tools.h"
 namespace offshore
@@ -104,51 +104,51 @@ namespace offshore
     std::memset(signature, 0, sizeof(signature));
   }
 
-  bool pricing_record::_load(epee::serialization::portable_storage& src, epee::serialization::section* hparent)
-  {
-    pr_serialized in{};
-    if (in._load(src, hparent))
-    {
-      // Copy everything into the local instance
-      xAG = in.xAG;
-      xAU = in.xAU;
-      xAUD = in.xAUD;
-      xBTC = in.xBTC;
-      xCAD = in.xCAD;
-      xCHF = in.xCHF;
-      xCNY = in.xCNY;
-      xEUR = in.xEUR;
-      xGBP = in.xGBP;
-      xJPY = in.xJPY;
-      xNOK = in.xNOK;
-      xNZD = in.xNZD;
-      xUSD = in.xUSD;
-      unused1 = in.unused1;
-      unused2 = in.unused2;
-      unused3 = in.unused3;
-      timestamp = in.timestamp;
-      for (unsigned int i = 0; i < in.signature.length(); i += 2) {
-        std::string byteString = in.signature.substr(i, 2);
-        signature[i>>1] = (char) strtol(byteString.c_str(), NULL, 16);
-      }
-      return true;
-    }
+  // bool pricing_record::_load(epee::serialization::portable_storage& src, epee::serialization::section* hparent)
+  // {
+  //   pr_serialized in{};
+  //   if (in._load(src, hparent))
+  //   {
+  //     // Copy everything into the local instance
+  //     xAG = in.xAG;
+  //     xAU = in.xAU;
+  //     xAUD = in.xAUD;
+  //     xBTC = in.xBTC;
+  //     xCAD = in.xCAD;
+  //     xCHF = in.xCHF;
+  //     xCNY = in.xCNY;
+  //     xEUR = in.xEUR;
+  //     xGBP = in.xGBP;
+  //     xJPY = in.xJPY;
+  //     xNOK = in.xNOK;
+  //     xNZD = in.xNZD;
+  //     xUSD = in.xUSD;
+  //     unused1 = in.unused1;
+  //     unused2 = in.unused2;
+  //     unused3 = in.unused3;
+  //     timestamp = in.timestamp;
+  //     for (unsigned int i = 0; i < in.signature.length(); i += 2) {
+  //       std::string byteString = in.signature.substr(i, 2);
+  //       signature[i>>1] = (char) strtol(byteString.c_str(), NULL, 16);
+  //     }
+  //     return true;
+  //   }
 
-    // Report error here?
-    return false;
-  }
+  //   // Report error here?
+  //   return false;
+  // }
 
-  bool pricing_record::store(epee::serialization::portable_storage& dest, epee::serialization::section* hparent) const
-  {
-    std::string sig_hex;
-    for (unsigned int i=0; i<64; i++) {
-      std::stringstream ss;
-      ss << std::hex << std::setw(2) << std::setfill('0') << (0xff & signature[i]);
-      sig_hex += ss.str();
-    }
-    const pr_serialized out{xAG,xAU,xAUD,xBTC,xCAD,xCHF,xCNY,xEUR,xGBP,xJPY,xNOK,xNZD,xUSD,unused1,unused2,unused3,timestamp,sig_hex};
-    return out.store(dest, hparent);
-  }
+  // bool pricing_record::store(epee::serialization::portable_storage& dest, epee::serialization::section* hparent) const
+  // {
+  //   std::string sig_hex;
+  //   for (unsigned int i=0; i<64; i++) {
+  //     std::stringstream ss;
+  //     ss << std::hex << std::setw(2) << std::setfill('0') << (0xff & signature[i]);
+  //     sig_hex += ss.str();
+  //   }
+  //   const pr_serialized out{xAG,xAU,xAUD,xBTC,xCAD,xCHF,xCNY,xEUR,xGBP,xJPY,xNOK,xNZD,xUSD,unused1,unused2,unused3,timestamp,sig_hex};
+  //   return out.store(dest, hparent);
+  // }
 
   pricing_record::pricing_record(const pricing_record& orig) noexcept
     : xAG(orig.xAG)
@@ -258,114 +258,114 @@ namespace offshore
     return (*this).equal(empty_pr);
   }
 
-  bool pricing_record::verifySignature(const std::string& public_key) const 
-  {
-    CHECK_AND_ASSERT_THROW_MES(!public_key.empty(), "Pricing record verification failed. NULL public key. PK Size: " << public_key.size()); // TODO: is this necessary or the one below already covers this case, meannin it will produce empty pubkey?
+  // bool pricing_record::verifySignature(const std::string& public_key) const 
+  // {
+  //   CHECK_AND_ASSERT_THROW_MES(!public_key.empty(), "Pricing record verification failed. NULL public key. PK Size: " << public_key.size()); // TODO: is this necessary or the one below already covers this case, meannin it will produce empty pubkey?
     
-    // extract the key
-    EVP_PKEY* pubkey;
-    BIO* bio = BIO_new_mem_buf(public_key.c_str(), public_key.size());
-    if (!bio) {
-      return false;
-    }
-    pubkey = PEM_read_bio_PUBKEY(bio, NULL, NULL, NULL);
-    BIO_free(bio);
-    CHECK_AND_ASSERT_THROW_MES(pubkey != NULL, "Pricing record verification failed. NULL public key.");
+  //   // extract the key
+  //   EVP_PKEY* pubkey;
+  //   BIO* bio = BIO_new_mem_buf(public_key.c_str(), public_key.size());
+  //   if (!bio) {
+  //     return false;
+  //   }
+  //   pubkey = PEM_read_bio_PUBKEY(bio, NULL, NULL, NULL);
+  //   BIO_free(bio);
+  //   CHECK_AND_ASSERT_THROW_MES(pubkey != NULL, "Pricing record verification failed. NULL public key.");
 
 
-    // Convert our internal 64-byte binary representation into 128-byte hex string
-    std::string sig_hex;
-    for (unsigned int i=0; i<64; i++) {
-      std::stringstream ss;
-      ss << std::hex << std::setw(2) << std::setfill('0') << (0xff & signature[i]);
-      sig_hex += ss.str();
-    }
+  //   // Convert our internal 64-byte binary representation into 128-byte hex string
+  //   std::string sig_hex;
+  //   for (unsigned int i=0; i<64; i++) {
+  //     std::stringstream ss;
+  //     ss << std::hex << std::setw(2) << std::setfill('0') << (0xff & signature[i]);
+  //     sig_hex += ss.str();
+  //   }
     
-    // Rebuild the OpenSSL format of the signature from the r+s values
-    std::string sig_rebuilt = "30";
-    std::string r_rebuilt = (signature[0] == 0) ? sig_hex.substr(2, 62) : sig_hex.substr(0,64);
-    if (signature[(signature[0] == 0) ? 1 : 0] & 0x80)
-      r_rebuilt = "00" + r_rebuilt;
-    std::string s_rebuilt = (signature[(signature[32] == 0) ? 33 : 32] == 0) ? sig_hex.substr(66, 62) : sig_hex.substr(64,64);
-    if (signature[(signature[32] == 0) ? 33 : 32] & 0x80)
-      s_rebuilt = "00" + s_rebuilt;
-    size_t sig_length = (r_rebuilt.length() + s_rebuilt.length() + 8) >> 1;
-    std::stringstream ss;
-    ss << std::hex << sig_length;
-    sig_rebuilt += std::string(2-ss.str().length(), '0') + ss.str();
-    ss.clear();
-    sig_rebuilt += "02";
-    size_t r_length = r_rebuilt.length() >> 1;
-    std::stringstream ss2;
-    ss2 << std::hex << r_length;
-    sig_rebuilt += std::string(2-ss2.str().length(), '0') + ss2.str();
-    ss2.clear();
-    sig_rebuilt += r_rebuilt;
-    sig_rebuilt += "02";
-    size_t s_length = s_rebuilt.length() >> 1;
-    std::stringstream ss3;
-    ss3 << std::hex << s_length;
-    sig_rebuilt += std::string(2-ss3.str().length(), '0') + ss3.str();
-    ss3.clear();
-    sig_rebuilt += s_rebuilt;
+  //   // Rebuild the OpenSSL format of the signature from the r+s values
+  //   std::string sig_rebuilt = "30";
+  //   std::string r_rebuilt = (signature[0] == 0) ? sig_hex.substr(2, 62) : sig_hex.substr(0,64);
+  //   if (signature[(signature[0] == 0) ? 1 : 0] & 0x80)
+  //     r_rebuilt = "00" + r_rebuilt;
+  //   std::string s_rebuilt = (signature[(signature[32] == 0) ? 33 : 32] == 0) ? sig_hex.substr(66, 62) : sig_hex.substr(64,64);
+  //   if (signature[(signature[32] == 0) ? 33 : 32] & 0x80)
+  //     s_rebuilt = "00" + s_rebuilt;
+  //   size_t sig_length = (r_rebuilt.length() + s_rebuilt.length() + 8) >> 1;
+  //   std::stringstream ss;
+  //   ss << std::hex << sig_length;
+  //   sig_rebuilt += std::string(2-ss.str().length(), '0') + ss.str();
+  //   ss.clear();
+  //   sig_rebuilt += "02";
+  //   size_t r_length = r_rebuilt.length() >> 1;
+  //   std::stringstream ss2;
+  //   ss2 << std::hex << r_length;
+  //   sig_rebuilt += std::string(2-ss2.str().length(), '0') + ss2.str();
+  //   ss2.clear();
+  //   sig_rebuilt += r_rebuilt;
+  //   sig_rebuilt += "02";
+  //   size_t s_length = s_rebuilt.length() >> 1;
+  //   std::stringstream ss3;
+  //   ss3 << std::hex << s_length;
+  //   sig_rebuilt += std::string(2-ss3.str().length(), '0') + ss3.str();
+  //   ss3.clear();
+  //   sig_rebuilt += s_rebuilt;
 
-    // Build the JSON string, so that we can verify the signature
-    std::ostringstream oss;
-    oss << "{\"xAG\":" << xAG;
-    oss << ",\"xAU\":" << xAU;
-    oss << ",\"xAUD\":" << xAUD;
-    oss << ",\"xBTC\":" << xBTC;
-    oss << ",\"xCAD\":" << xCAD;
-    oss << ",\"xCHF\":" << xCHF;
-    oss << ",\"xCNY\":" << xCNY;
-    oss << ",\"xEUR\":" << xEUR;
-    oss << ",\"xGBP\":" << xGBP;
-    oss << ",\"xJPY\":" << xJPY;
-    oss << ",\"xNOK\":" << xNOK;
-    oss << ",\"xNZD\":" << xNZD;
-    oss << ",\"xUSD\":" << xUSD;
-    oss << ",\"unused1\":" << unused1;
-    oss << ",\"unused2\":" << unused2;
-    oss << ",\"unused3\":" << unused3;
-    if (timestamp > 0)
-      oss << ",\"timestamp\":" << timestamp;
-    oss << "}";
-    std::string message = oss.str();    
+  //   // Build the JSON string, so that we can verify the signature
+  //   std::ostringstream oss;
+  //   oss << "{\"xAG\":" << xAG;
+  //   oss << ",\"xAU\":" << xAU;
+  //   oss << ",\"xAUD\":" << xAUD;
+  //   oss << ",\"xBTC\":" << xBTC;
+  //   oss << ",\"xCAD\":" << xCAD;
+  //   oss << ",\"xCHF\":" << xCHF;
+  //   oss << ",\"xCNY\":" << xCNY;
+  //   oss << ",\"xEUR\":" << xEUR;
+  //   oss << ",\"xGBP\":" << xGBP;
+  //   oss << ",\"xJPY\":" << xJPY;
+  //   oss << ",\"xNOK\":" << xNOK;
+  //   oss << ",\"xNZD\":" << xNZD;
+  //   oss << ",\"xUSD\":" << xUSD;
+  //   oss << ",\"unused1\":" << unused1;
+  //   oss << ",\"unused2\":" << unused2;
+  //   oss << ",\"unused3\":" << unused3;
+  //   if (timestamp > 0)
+  //     oss << ",\"timestamp\":" << timestamp;
+  //   oss << "}";
+  //   std::string message = oss.str();    
 
-    // Convert signature from hex-encoded to binary
-    std::string compact;
-    for (unsigned int i = 0; i < sig_rebuilt.length(); i += 2) {
-      std::string byteString = sig_rebuilt.substr(i, 2);
-      char byte = (char) strtol(byteString.c_str(), NULL, 16);
-      compact += (byte);
-    }
+  //   // Convert signature from hex-encoded to binary
+  //   std::string compact;
+  //   for (unsigned int i = 0; i < sig_rebuilt.length(); i += 2) {
+  //     std::string byteString = sig_rebuilt.substr(i, 2);
+  //     char byte = (char) strtol(byteString.c_str(), NULL, 16);
+  //     compact += (byte);
+  //   }
 
-    // Create a verify digest from the message
-    EVP_MD_CTX *ctx = EVP_MD_CTX_create();
-    int ret = 0;
-    if (ctx) {
-      ret = EVP_DigestVerifyInit(ctx, NULL, EVP_sha256(), NULL, pubkey);
-      if (ret == 1) {
-        ret = EVP_DigestVerifyUpdate(ctx, message.data(), message.length());
-        if (ret == 1) {
-          ret = EVP_DigestVerifyFinal(ctx, (const unsigned char *)compact.data(), compact.length());
-        }
-      }
-    }
+  //   // Create a verify digest from the message
+  //   EVP_MD_CTX *ctx = EVP_MD_CTX_create();
+  //   int ret = 0;
+  //   if (ctx) {
+  //     ret = EVP_DigestVerifyInit(ctx, NULL, EVP_sha256(), NULL, pubkey);
+  //     if (ret == 1) {
+  //       ret = EVP_DigestVerifyUpdate(ctx, message.data(), message.length());
+  //       if (ret == 1) {
+  //         ret = EVP_DigestVerifyFinal(ctx, (const unsigned char *)compact.data(), compact.length());
+  //       }
+  //     }
+  //   }
 
-    // Cleanup the context we created
-    EVP_MD_CTX_destroy(ctx);
-    // Cleanup the openssl stuff
-    EVP_PKEY_free(pubkey);
+  //   // Cleanup the context we created
+  //   EVP_MD_CTX_destroy(ctx);
+  //   // Cleanup the openssl stuff
+  //   EVP_PKEY_free(pubkey);
     
-    if (ret == 1)
-      return true;
+  //   if (ret == 1)
+  //     return true;
 
-    // Get the errors from OpenSSL
-    //ERR_print_errors_fp (stderr);
+  //   // Get the errors from OpenSSL
+  //   //ERR_print_errors_fp (stderr);
   
-    return false;
-  }
+  //   return false;
+  // }
 
   void pricing_record::set_for_height_821428() {
     const std::string pr_821428 = "9b3f6f2f8f0000003d620e1202000000be71be2555120000b8627010000000000000000000000000ea0885b2270d00000000000000000000f797ff9be00b0000ddbdb005270a0000fc90cfe02b01060000000000000000000000000000000000d0a28224000e000000d643be960e0000002e8bb6a40e000000f8a817f80d00002f5d27d45cdbfbac3d0f6577103f68de30895967d7562fbd56c161ae90130f54301b1ea9d5fd062f37dac75c3d47178bc6f149d21da1ff0e8430065cb762b93a";
@@ -395,41 +395,41 @@ namespace offshore
   }
 
   // overload for pr validation for block
-  bool pricing_record::valid(cryptonote::network_type nettype, uint32_t hf_version, uint64_t bl_timestamp, uint64_t last_bl_timestamp) const 
-  {
-    // check for empty pr 
-    if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
-      if (this->empty())
-        return true;
-    } else {
-      unsigned char test_sig[64];
-      std::memset(test_sig, 0, sizeof(test_sig));
-      if (std::memcmp(test_sig, this->signature, sizeof(this->signature)) == 0) {
-        return true;
-      }
-    }
+  // bool pricing_record::valid(cryptonote::network_type nettype, uint32_t hf_version, uint64_t bl_timestamp, uint64_t last_bl_timestamp) const 
+  // {
+  //   // check for empty pr 
+  //   if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
+  //     if (this->empty())
+  //       return true;
+  //   } else {
+  //     unsigned char test_sig[64];
+  //     std::memset(test_sig, 0, sizeof(test_sig));
+  //     if (std::memcmp(test_sig, this->signature, sizeof(this->signature)) == 0) {
+  //       return true;
+  //     }
+  //   }
 
-    // verify the signature
-    if (hf_version >= HF_VERSION_OFFSHORE_FULL) {
-      if (!verifySignature(get_config(nettype).ORACLE_PUBLIC_KEY)) {
-        LOG_ERROR("Invalid pricing record signature.");
-        return false;
-      }
-    }
+  //   // verify the signature
+  //   if (hf_version >= HF_VERSION_OFFSHORE_FULL) {
+  //     if (!verifySignature(get_config(nettype).ORACLE_PUBLIC_KEY)) {
+  //       LOG_ERROR("Invalid pricing record signature.");
+  //       return false;
+  //     }
+  //   }
   
-    // valiadte the timestmap
-    if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
-      if (this->timestamp > bl_timestamp + PRICING_RECORD_VALID_TIME_DIFF_FROM_BLOCK) {
-        LOG_ERROR("Pricing record timestamp is too far in the future.");
-        return false;
-      }
-      if (this->timestamp <= last_bl_timestamp) {
-        LOG_ERROR("Pricing record timestamp is too old.");
-        return false;
-      }
-    }
+  //   // valiadte the timestmap
+  //   if (hf_version >= HF_VERSION_XASSET_FEES_V2) {
+  //     if (this->timestamp > bl_timestamp + PRICING_RECORD_VALID_TIME_DIFF_FROM_BLOCK) {
+  //       LOG_ERROR("Pricing record timestamp is too far in the future.");
+  //       return false;
+  //     }
+  //     if (this->timestamp <= last_bl_timestamp) {
+  //       LOG_ERROR("Pricing record timestamp is too old.");
+  //       return false;
+  //     }
+  //   }
 
-    return true;
-  }
+  //   return true;
+  // }
 
 }
